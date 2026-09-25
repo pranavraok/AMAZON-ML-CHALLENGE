@@ -1,0 +1,17 @@
+{
+  "project": {
+    "seed": 2026,
+    "log_level": "INFO"
+  },
+  "paths": {
+    "dataset_root": "../6ab10eb3b23ba_student_resource/student_resource/dataset",
+    "development_dir": "data/dev",
+    "work_dir": "data/work",
+    "artifact_dir": "artifacts",
+    "output_dir": "output"
+  },
+  "development_subset": {
+    "source1_count": 50000,
+    "negative_multiplier_per_source": 2.0
+  }
+}

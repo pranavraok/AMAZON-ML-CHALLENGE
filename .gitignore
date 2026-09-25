@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local datasets and generated intermediates
+dataset/
+data/
+artifacts/
+models/
+cache/
+tmp/
+
+# Large tabular and model artifacts
+*.tsv
+*.csv
+*.parquet
+*.arrow
+*.feather
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.joblib
+*.bin
+*.model
+*.zip
+
+# Generated submission outputs stay local
+output/*
+!output/.gitkeep
+
+# Logs and local configuration overrides
+*.log
+configs/local.json
+.env

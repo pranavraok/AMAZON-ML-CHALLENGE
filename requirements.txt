@@ -1,0 +1,10 @@
+# Reproducible working environment. Re-freeze only after the final environment is tested.
+joblib==1.5.1
+lightgbm==4.6.0
+numpy==2.2.6
+polars==1.33.1
+pyarrow==20.0.0
+rapidfuzz==3.14.1
+scikit-learn==1.7.1
+scipy==1.16.1
+sparse-dot-topn==1.1.5
