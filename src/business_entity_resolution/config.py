@@ -81,11 +81,22 @@ class DevelopmentSubsetSettings:
 
 
 @dataclass(frozen=True)
+class Day1BaselineSettings:
+    n_folds: int
+    validation_fold: int
+    max_candidates_per_source: int
+    fallback_candidates_per_source: int
+    max_token_bucket: int
+    num_boost_rounds: int
+
+
+@dataclass(frozen=True)
 class AppConfig:
     repository_root: Path
     project: ProjectSettings
     paths: PathSettings
     development_subset: DevelopmentSubsetSettings
+    day1_baseline: Day1BaselineSettings
 
     def validate_inputs(self) -> list[Path]:
         return [path for path in self.paths.required_input_paths() if not path.is_file()]
@@ -109,6 +120,18 @@ class AppConfig:
                 "negative_multiplier_per_source": (
                     self.development_subset.negative_multiplier_per_source
                 ),
+            },
+            "day1_baseline": {
+                "n_folds": self.day1_baseline.n_folds,
+                "validation_fold": self.day1_baseline.validation_fold,
+                "max_candidates_per_source": (
+                    self.day1_baseline.max_candidates_per_source
+                ),
+                "fallback_candidates_per_source": (
+                    self.day1_baseline.fallback_candidates_per_source
+                ),
+                "max_token_bucket": self.day1_baseline.max_token_bucket,
+                "num_boost_rounds": self.day1_baseline.num_boost_rounds,
             },
         }
 
@@ -138,6 +161,7 @@ def load_config(config_path: str | Path) -> AppConfig:
     project_raw = raw.get("project", {})
     paths_raw = raw.get("paths", {})
     subset_raw = raw.get("development_subset", {})
+    baseline_raw = raw.get("day1_baseline", {})
 
     dataset_value = os.environ.get(
         DATASET_ENV_VAR,
@@ -154,6 +178,31 @@ def load_config(config_path: str | Path) -> AppConfig:
         raise ValueError(
             "development_subset.negative_multiplier_per_source cannot be negative"
         )
+
+    n_folds = int(baseline_raw.get("n_folds", 5))
+    validation_fold = int(baseline_raw.get("validation_fold", 0))
+    max_candidates_per_source = int(
+        baseline_raw.get("max_candidates_per_source", 12)
+    )
+    fallback_candidates_per_source = int(
+        baseline_raw.get("fallback_candidates_per_source", 2)
+    )
+    max_token_bucket = int(baseline_raw.get("max_token_bucket", 200))
+    num_boost_rounds = int(baseline_raw.get("num_boost_rounds", 250))
+    if n_folds < 2:
+        raise ValueError("day1_baseline.n_folds must be at least 2")
+    if not 0 <= validation_fold < n_folds:
+        raise ValueError("day1_baseline.validation_fold must be within n_folds")
+    if max_candidates_per_source <= 0:
+        raise ValueError("day1_baseline.max_candidates_per_source must be positive")
+    if fallback_candidates_per_source < 0:
+        raise ValueError(
+            "day1_baseline.fallback_candidates_per_source cannot be negative"
+        )
+    if max_token_bucket <= 0:
+        raise ValueError("day1_baseline.max_token_bucket must be positive")
+    if num_boost_rounds <= 0:
+        raise ValueError("day1_baseline.num_boost_rounds must be positive")
 
     return AppConfig(
         repository_root=repository_root,
@@ -179,5 +228,13 @@ def load_config(config_path: str | Path) -> AppConfig:
         development_subset=DevelopmentSubsetSettings(
             source1_count=source1_count,
             negative_multiplier_per_source=negative_multiplier,
+        ),
+        day1_baseline=Day1BaselineSettings(
+            n_folds=n_folds,
+            validation_fold=validation_fold,
+            max_candidates_per_source=max_candidates_per_source,
+            fallback_candidates_per_source=fallback_candidates_per_source,
+            max_token_bucket=max_token_bucket,
+            num_boost_rounds=num_boost_rounds,
         ),
     )

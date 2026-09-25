@@ -8,7 +8,15 @@ version = "0.1.0"
 description = "Business entity resolution pipeline for Amazon ML Challenge 2026"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "joblib==1.5.1",
+  "lightgbm==4.6.0",
+  "numpy==2.2.6",
+  "polars==1.33.1",
+  "psutil==7.2.2",
+  "rapidfuzz==3.14.1",
+  "scikit-learn==1.7.1",
+]
 
 [project.scripts]
 amazon-ml-er = "business_entity_resolution.cli:main"

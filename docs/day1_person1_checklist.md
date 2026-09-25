@@ -12,17 +12,17 @@
 
 ## Team handoff
 
-- [ ] Share `docs/interfaces.md` with Persons 2, 3, and 4.
-- [ ] Confirm whether Person 2 will preserve one candidate row per retrieval route or aggregate routes.
-- [ ] Confirm the first feature schema with Person 3.
-- [ ] Receive the grouped S1 fold file and metric tests from Person 4.
-- [ ] Run a first end-to-end subset integration.
+- [x] Publish `docs/interfaces.md` for Persons 2, 3, and 4.
+- [x] Freeze the Day 1 candidate representation: one unique pair row with deterministic aggregated route names.
+- [x] Publish the first deterministic feature schema for Person 3 replacement work.
+- [x] Produce a deterministic grouped S1 fold file and exact macro F0.5 tests compatible with Person 4's handoff.
+- [x] Run the first end-to-end integration on the complete 50,000-entity subset.
 
 ## Evidence required before Day 1 ends
 
-- [ ] Development subset manifest and row counts.
-- [ ] Candidate sample from Person 2.
-- [ ] Feature sample and speed benchmark from Person 3.
-- [ ] Baseline macro F0.5 from Person 4.
-- [ ] One reproducible command for the integrated subset pipeline.
-- [ ] Written Day 2 defect and owner list.
+- [x] Development subset manifest and row counts.
+- [x] Contract-compatible baseline candidate batch (temporary until Person 2 handoff).
+- [x] Contract-compatible feature batch and speed benchmark (temporary until Person 3 handoff).
+- [x] Exact baseline macro F0.5 and threshold report (pending independent Person 4 confirmation).
+- [x] One reproducible command for the integrated subset pipeline.
+- [x] Written Day 2 defect and owner list.

@@ -49,6 +49,8 @@ Person 2 returns one row for each S1-to-secondary candidate pair:
 
 If the same pair is found by several routes, either preserve one row per route or aggregate deterministically. The chosen representation must be documented before feature work is frozen.
 
+Day 1 freezes the baseline representation as one row per unique pair. Multiple route names are sorted and joined with `+`; `retrieval_rank` is the deterministic rank after combined scoring and `retrieval_score` is the combined baseline score. Person 2 may propose a different representation, but the change must be documented and approved before integration.
+
 `candidate_pairs.tsv` is not this long pair table. It is the final submission view with exactly two columns:
 
 ```text
@@ -72,6 +74,37 @@ Person 3 returns one row per unique candidate pair. The required identifier colu
 All model features must be numeric or boolean with stable names and dtypes. Missing evidence must have explicit flags; it must not silently become a plausible zero similarity.
 
 Training and inference must call the same feature implementation.
+
+The Day 1 baseline publishes these stable numeric feature names:
+
+```text
+country_equal
+name_unicode_exact
+name_ascii_exact
+address_unicode_exact
+address_ascii_exact
+name_token_jaccard
+address_token_jaccard
+address_number_jaccard
+name_ratio
+name_token_sort_ratio
+name_token_set_ratio
+address_ratio
+address_token_sort_ratio
+address_token_set_ratio
+name_prefix_ratio
+address_prefix_ratio
+name_length_ratio
+address_length_ratio
+both_address_missing
+one_address_missing
+retrieval_score
+retrieval_rank_inverse
+route_count
+target_is_s3
+```
+
+The temporary Day 1 pooled model excludes `retrieval_score` and `retrieval_rank_inverse` because training folds contain positive-coverage rows that do not exist at inference. The values remain in the handoff file for analysis and future production retrieval modules.
 
 ## 5. Model-score contract
 

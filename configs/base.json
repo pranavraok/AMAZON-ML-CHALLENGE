@@ -13,5 +13,13 @@
   "development_subset": {
     "source1_count": 50000,
     "negative_multiplier_per_source": 2.0
+  },
+  "day1_baseline": {
+    "n_folds": 5,
+    "validation_fold": 0,
+    "max_candidates_per_source": 12,
+    "fallback_candidates_per_source": 2,
+    "max_token_bucket": 200,
+    "num_boost_rounds": 250
   }
 }

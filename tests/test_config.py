@@ -33,6 +33,8 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.project.log_level, "DEBUG")
             self.assertEqual(config.paths.dataset_root, (temp_path / "dataset").resolve())
             self.assertEqual(config.development_subset.source1_count, 12)
+            self.assertEqual(config.day1_baseline.n_folds, 5)
+            self.assertEqual(config.day1_baseline.validation_fold, 0)
 
 
 if __name__ == "__main__":
