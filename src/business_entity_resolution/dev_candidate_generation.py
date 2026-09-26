@@ -99,7 +99,31 @@ def main() -> None:
         help="Number of Source 1 records to evaluate.",
     )
 
+    parser.add_argument(
+        "--blocking-backend",
+        choices=("legacy", "compact"),
+        default="legacy",
+        help=(
+            "Blocking index implementation. 'legacy' is the Day 2 "
+            "in-memory dictionary index. 'compact' is the hashed CSR "
+            "index and produces identical candidates with a much "
+            "smaller memory footprint."
+        ),
+    )
+
+    parser.add_argument(
+        "--release-target-records",
+        action="store_true",
+        help=(
+            "Drop this process's reference to the target records once "
+            "the indexes are built. Requires --blocking-backend compact, "
+            "because the legacy index retains the records."
+        ),
+    )
+
     args = parser.parse_args()
+
+    blocking_backend = args.blocking_backend
 
     dev_dir = Path(args.dev_dir)
 
@@ -175,6 +199,7 @@ def main() -> None:
 
     print("\nConfiguration:")
     print(f"  {config}")
+    print(f"  blocking_backend = {blocking_backend}")
 
     build_started = time.perf_counter()
     # ---------------------------------------------------------
@@ -186,6 +211,7 @@ def main() -> None:
     generator_s2 = CandidateGenerator(
         target_records=source2,
         config=config,
+        blocking_backend=blocking_backend,
     )
 
     # ---------------------------------------------------------
@@ -197,7 +223,30 @@ def main() -> None:
     generator_s3 = CandidateGenerator(
         target_records=source3,
         config=config,
+        blocking_backend=blocking_backend,
     )
+
+    # ---------------------------------------------------------
+    # FREE TARGET RECORDS
+    #
+    # The retrievers keep only entity ids, so their records can be
+    # released. The legacy blocking index still holds them, so this is
+    # only possible with the compact backend.
+    # ---------------------------------------------------------
+
+    if args.release_target_records:
+
+        if blocking_backend != "compact":
+            raise ValueError(
+                "--release-target-records requires "
+                "--blocking-backend compact; the legacy index keeps a "
+                "reference to the target records"
+            )
+
+        del source2
+        del source3
+
+        print("Released target records after index build.")
 
     # ---------------------------------------------------------
     # GENERATE

@@ -20,11 +20,11 @@ from business_entity_resolution.blocking import (
     BlockingIndex,
     CandidateEvidence,
 )
+from business_entity_resolution.compact_index import CompactBlockingIndex
 from business_entity_resolution.normalization import NormalizedRecord
 from business_entity_resolution.retrieval import (
     CharacterTfidfRetriever,
 )
-
 
 @dataclass(frozen=True)
 class CandidateGenerationConfig:
@@ -73,6 +73,7 @@ class CandidateGenerator:
         target_records: Sequence[NormalizedRecord],
         *,
         config: CandidateGenerationConfig | None = None,
+        blocking_backend: str = "legacy",
     ) -> None:
 
         if not target_records:
@@ -81,6 +82,14 @@ class CandidateGenerator:
             )
 
         self.config = config or CandidateGenerationConfig()
+
+        if blocking_backend not in {"legacy", "compact"}:
+            raise ValueError(
+                "blocking_backend must be 'legacy' or 'compact'; "
+                f"got {blocking_backend!r}"
+            )
+
+        self.blocking_backend = blocking_backend
 
         self.target_source = target_records[0].entity_id.split(
             "-", 1
@@ -103,9 +112,19 @@ class CandidateGenerator:
 
         # ---------------------------------------------------------
         # Blocking
+        #
+        # 'legacy' is the Day 2 dictionary index. 'compact' is the
+        # hashed CSR index, which returns the identical candidate set
+        # for roughly a tenth of the memory.
         # ---------------------------------------------------------
 
-        self.blocking_index = BlockingIndex(
+        index_class = (
+            CompactBlockingIndex
+            if blocking_backend == "compact"
+            else BlockingIndex
+        )
+
+        self.blocking_index = index_class(
             target_records,
             rare_token_max_postings=self.config.rare_token_max_postings,
             numeric_token_max_postings=(
@@ -124,6 +143,10 @@ class CandidateGenerator:
 
         # ---------------------------------------------------------
         # TF-IDF retrieval
+        #
+        # The retrievers retain only entity ids and the transposed
+        # matrices, so with the compact backend the caller may drop its
+        # own reference to the normalized records after construction.
         # ---------------------------------------------------------
 
         self.name_retriever = CharacterTfidfRetriever(
@@ -179,9 +202,14 @@ class CandidateGenerator:
         # 2. TF-IDF retrieval (name, then address)
         # ---------------------------------------------------------
 
+        retrievers = (
+            self.name_retriever,
+            self.address_retriever,
+        )
+
         for results in (
-            self.name_retriever.retrieve(source1),
-            self.address_retriever.retrieve(source1),
+            retriever.retrieve(source1)
+            for retriever in retrievers
         ):
 
             for result in results:

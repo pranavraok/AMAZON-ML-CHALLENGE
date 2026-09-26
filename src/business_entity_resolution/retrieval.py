@@ -76,29 +76,22 @@ class CharacterTfidfRetriever:
         self.target_source = self._get_target_source()
 
         # Country-specific indexes.
-        self._country_matrices: dict[
-            str,
-            csr_matrix
-        ] = {}
-
-        # IMPORTANT:
-        # Store TRANSPOSED target matrices.
         #
-        # Original:
-        #     target_matrix @ query_vector.T
-        #
-        # New:
-        #     query_vector @ target_matrix.T
-        #
-        # This is substantially faster for repeated single-row queries.
+        # Only the TRANSPOSED matrix is retained. Queries always evaluate
+        # ``query_vector @ target_matrix.T``, so keeping the forward matrix
+        # as well doubled the largest allocation for no benefit. The forward
+        # matrix is discarded as soon as the transpose exists.
         self._country_transposed_matrices: dict[
             str,
             csr_matrix
         ] = {}
 
-        self._country_records: dict[
+        # Entity ids per country, in matrix-row order. The records
+        # themselves are not retained: at full scale they are the single
+        # largest allocation, and only the id is needed to break score ties.
+        self._country_entity_ids: dict[
             str,
-            list[NormalizedRecord]
+            list[str]
         ] = {}
 
         self._country_vectorizers: dict[
@@ -107,6 +100,9 @@ class CharacterTfidfRetriever:
         ] = {}
 
         self._build_index()
+
+        # Release the target records. Nothing below this point needs them.
+        self.records = []
 
     # ==============================================================
     # SOURCE
@@ -210,18 +206,20 @@ class CharacterTfidfRetriever:
                 country
             ] = vectorizer
 
-            self._country_records[
+            self._country_entity_ids[
                 country
-            ] = country_records
+            ] = [
+                record.entity_id for record in country_records
+            ]
 
-            self._country_matrices[
-                country
-            ] = matrix
-
-            # Store transpose ONCE.
+            # Store the transpose and drop the forward matrix. Rows of the
+            # transposed matrix are the target records, in the same order.
             self._country_transposed_matrices[
                 country
             ] = matrix.transpose().tocsr()
+
+            del matrix
+            del texts
 
     # ==============================================================
     # RETRIEVE
@@ -251,7 +249,7 @@ class CharacterTfidfRetriever:
         if country not in self._country_vectorizers:
             return []
 
-        records = self._country_records[
+        entity_ids = self._country_entity_ids[
             country
         ]
 
@@ -342,7 +340,7 @@ class CharacterTfidfRetriever:
             candidate_indices.tolist(),
             key=lambda index: (
                 -float(scores[index]),
-                records[index].entity_id,
+                entity_ids[index],
             ),
         )
 
@@ -354,11 +352,11 @@ class CharacterTfidfRetriever:
 
         for index in ranked_indices:
 
-            candidate = records[index]
+            candidate_entity_id = entity_ids[index]
 
             # Safety: no self-match.
             if (
-                candidate.entity_id
+                candidate_entity_id
                 == source1.entity_id
             ):
                 continue
@@ -366,7 +364,7 @@ class CharacterTfidfRetriever:
             results.append(
                 RetrievalResult(
                     candidate_entity_id=(
-                        candidate.entity_id
+                        candidate_entity_id
                     ),
                     target_source=(
                         self.target_source
