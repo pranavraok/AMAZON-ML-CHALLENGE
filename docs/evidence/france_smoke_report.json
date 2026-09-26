@@ -1,0 +1,11 @@
+{
+  "country": "France",
+  "test_s1_in_country": 259452,
+  "sampled_s1": 500,
+  "s1_with_candidates": 496,
+  "pairs": 24469,
+  "feature_seconds": 1.5,
+  "non_numeric_columns": [],
+  "columns_with_inf": [],
+  "missing_rate_vs_training": {}
+}

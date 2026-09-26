@@ -37,6 +37,8 @@ S1 dev IDs come from Person 1's `_priority_sample_source1` with seed 2026 (the s
 
 ## 3. API contract for Person 1
 
+> **Superseded by `docs/person3_day2_handoff.md` (feature version p3-v2).** `calculate_pair_features` now also needs `name_noise=`, and the frozen model set excludes the context features.
+
 ```python
 from business_entity_resolution.similarity_features import (
     prepare_records, calculate_pair_features, add_context_features,

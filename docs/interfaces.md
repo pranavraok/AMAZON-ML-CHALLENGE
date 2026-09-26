@@ -75,7 +75,7 @@ All model features must be numeric or boolean with stable names and dtypes. Miss
 
 Training and inference must call the same feature implementation.
 
-Person 3's extended feature set lives in `similarity_features.py`: `calculate_pair_features` followed by `add_context_features` on the full table (see `docs/person3_day1_handoff.md`). Feature names, order, dtypes and descriptions are in `similarity_features.py` and `docs/feature_dictionary.md`. The Day 1 baseline in `features.py` is unchanged.
+Person 3's frozen feature set (`p3-v2`, 79 columns) lives in `similarity_features.py`: `calculate_pair_features_parallel` (which also joins the name-frequency features), then `validate_feature_frame`. The model columns are `FROZEN_MODEL_FEATURES`; dtypes and artifact checksums are in `configs/p3_features_frozen.json`. `scripts/build_p3_feature_file.py` turns a candidate TSV into the feature file. NaN means "not applicable" (see `docs/person3_day2_handoff.md`). The Day 1 baseline in `features.py` is unchanged.
 
 The Day 1 baseline publishes these stable numeric feature names:
 

@@ -17,7 +17,7 @@ import polars as pl
 
 from business_entity_resolution.config import load_config
 from business_entity_resolution.pair_labels import (
-    candidate_recall, explode_ground_truth, interim_candidates, label_candidates, read_source,
+    candidate_recall, explode_ground_truth, interim_candidates, label_candidates,
 )
 from business_entity_resolution.subset import _priority_sample_source1
 
@@ -42,7 +42,7 @@ def main() -> None:
     )
     s1 = pl.DataFrame(sampled).with_columns(pl.all().fill_null(""))
     s1_ids = set(s1["entity_id"].to_list())
-    gt = read_source_gt = pl.read_csv(
+    gt = pl.read_csv(
         paths.train_ground_truth, separator="\t", quote_char=None, infer_schema=False
     ).filter(pl.col("source1_entity_id").is_in(s1_ids))
 

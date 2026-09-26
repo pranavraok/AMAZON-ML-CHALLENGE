@@ -1,0 +1,52 @@
+{
+  "none": {
+    "dropped": 0,
+    "threshold": 0.77,
+    "macro_f05": 0.921357
+  },
+  "name_frequency": {
+    "dropped": 4,
+    "threshold": 0.69,
+    "macro_f05": 0.920313
+  },
+  "noise_ratio": {
+    "dropped": 2,
+    "threshold": 0.79,
+    "macro_f05": 0.921015
+  },
+  "primary_number": {
+    "dropped": 4,
+    "threshold": 0.76,
+    "macro_f05": 0.921393
+  },
+  "address_numbers": {
+    "dropped": 10,
+    "threshold": 0.83,
+    "macro_f05": 0.921337
+  },
+  "skeleton_unicode": {
+    "dropped": 7,
+    "threshold": 0.75,
+    "macro_f05": 0.921467
+  },
+  "idf_soft": {
+    "dropped": 9,
+    "threshold": 0.79,
+    "macro_f05": 0.921169
+  },
+  "combo": {
+    "dropped": 6,
+    "threshold": 0.71,
+    "macro_f05": 0.92144
+  },
+  "name_extra_fuzzy": {
+    "dropped": 7,
+    "threshold": 0.77,
+    "macro_f05": 0.921238
+  },
+  "address_fuzzy": {
+    "dropped": 5,
+    "threshold": 0.81,
+    "macro_f05": 0.92144
+  }
+}

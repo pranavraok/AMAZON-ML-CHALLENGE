@@ -21,7 +21,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import average_precision_score, roc_auc_score
 
 from business_entity_resolution.similarity_features import (
-    CONTEXT_FEATURE_COLUMNS, PAIR_FEATURE_COLUMNS, RETRIEVAL_FEATURE_COLUMNS,
+    CONTEXT_FEATURE_COLUMNS, RETRIEVAL_FEATURE_COLUMNS, model_feature_columns,
 )
 from business_entity_resolution.pair_labels import explode_ground_truth
 
@@ -55,7 +55,7 @@ def main() -> None:
     args = parser.parse_args()
 
     df = pl.read_parquet(args.features)
-    columns = [c for c in (*PAIR_FEATURE_COLUMNS, *CONTEXT_FEATURE_COLUMNS,
+    columns = [c for c in (*model_feature_columns(include_context=False), *CONTEXT_FEATURE_COLUMNS,
                            *RETRIEVAL_FEATURE_COLUMNS) if c in df.columns and c not in args.drop]
     y = df["label"].to_numpy()
 

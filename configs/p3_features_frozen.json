@@ -1,0 +1,346 @@
+{
+  "feature_version": "p3-v2.1",
+  "freeze_status": "final_person3_features",
+  "n_features": 79,
+  "features": [
+    {
+      "name": "name_exact_latin",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_exact_core",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_token_sort_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_token_set_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_partial_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_wratio_latin",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_jaro_winkler",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_levenshtein_sim",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_unicode_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_skeleton_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_skeleton_token_set",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_nospace_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_nospace_partial",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_alias_best_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_token_jaccard",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_token_containment",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_idf_jaccard",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_soft_idf_min",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_soft_idf_max",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_unmatched_max_idf",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_shared_max_idf",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_first_token_equal",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_last_token_equal",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_prefix3_equal",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_acronym_match",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_len_a",
+      "dtype": "Int16"
+    },
+    {
+      "name": "name_len_b",
+      "dtype": "Int16"
+    },
+    {
+      "name": "name_ntok_a",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_ntok_b",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_len_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_legal_conflict",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_legal_both_present",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_non_latin_a",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_non_latin_b",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_script_mismatch",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_a_unmatched_max_noise",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_b_unmatched_max_noise",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_missing_a",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_missing_b",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_any_missing",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_token_sort_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_token_set_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_partial_ratio",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_skeleton_token_set",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_token_jaccard",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_token_containment",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_alpha_containment",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_idf_jaccard",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_soft_idf_min",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_soft_idf_max",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_unmatched_max_idf",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_ntok_a",
+      "dtype": "Int16"
+    },
+    {
+      "name": "addr_ntok_b",
+      "dtype": "Int16"
+    },
+    {
+      "name": "addr_num_count_a",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_num_count_b",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_num_jaccard",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_num_shared",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_num_any_shared",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_num_suffix_match",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_num_conflict",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_longest_num_equal",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_primary_equal",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_primary_cross",
+      "dtype": "Float32"
+    },
+    {
+      "name": "addr_num_only_a",
+      "dtype": "Int8"
+    },
+    {
+      "name": "addr_num_only_b",
+      "dtype": "Int8"
+    },
+    {
+      "name": "combo_min",
+      "dtype": "Float32"
+    },
+    {
+      "name": "combo_max",
+      "dtype": "Float32"
+    },
+    {
+      "name": "combo_product",
+      "dtype": "Float32"
+    },
+    {
+      "name": "combo_mean",
+      "dtype": "Float32"
+    },
+    {
+      "name": "combo_name_high_addr_low",
+      "dtype": "Int8"
+    },
+    {
+      "name": "combo_addr_high_name_low",
+      "dtype": "Int8"
+    },
+    {
+      "name": "same_country",
+      "dtype": "Int8"
+    },
+    {
+      "name": "target_is_s3",
+      "dtype": "Int8"
+    },
+    {
+      "name": "name_core_freq_s1_a",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_core_freq_sec_a",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_core_freq_s1_b",
+      "dtype": "Float32"
+    },
+    {
+      "name": "name_core_freq_sec_b",
+      "dtype": "Float32"
+    }
+  ],
+  "excluded_by_decision": {
+    "ctx_*": "neutral in like-for-like ablation (95% CI spans 0); depends on whole-table state",
+    "retr_*": "depends on candidate-generation details; excluded like Person 1's retrieval scores"
+  },
+  "missing_value_contract": "no NaN/null/inf anywhere (enforced by validate_feature_frame); not-applicable values (missing address, no numbers, all tokens matched) use sentinel -1.0, or -5.0 for name_*_unmatched_max_noise; explicit addr_missing_* flags and number counts accompany every sentinel",
+  "artifacts": {
+    "artifacts/token_stats.json": "33579d2ecb85e3c887bd687d29b9fa5dfba0cf33cf4c6f8371c797059629bebd",
+    "artifacts/name_stats/core_counts.parquet": "e1edc01380e26a63e99bd054cefd3b715c62504b1c3c74a1bcd9cb6316dcc714",
+    "artifacts/name_stats/token_counts.parquet": "2d2fed3c37ccc32db355d0bba1b62bcadcde10d045eaf1a2b39082d66a207a9d",
+    "artifacts/name_stats/meta.parquet": "9c80111e1fd824f32eff1080117255bd73169ffa1c8a4f6f0528c45a7db09a44"
+  },
+  "artifact_commands": [
+    "python scripts/fit_token_stats.py --workers 10",
+    "python scripts/fit_name_stats.py --workers 10"
+  ],
+  "source_sha256": {
+    "src/business_entity_resolution/feature_text.py": "35110dc80a1fe6ae18154f06f799aa1a099c59b7fa52ccd077723737981391bc",
+    "src/business_entity_resolution/similarity_features.py": "2aa78eb6bc2105404ea8ece466058b0b3498440ac00af061b73b1d9377b9178f",
+    "src/business_entity_resolution/name_stats.py": "3d48e692dccdd236e51ab9a93783320e0dcfc1e4cf086669c74a792997d3a5f4",
+    "src/business_entity_resolution/token_stats.py": "110b98b96d0a8552b0dc74cd40552293e6e8ec63a7e2817932f55e462f0d81bf",
+    "src/business_entity_resolution/normalization.py": "354b265d13b3e19753732a922a7632bafdcea92b39d911f87db49cca654a3b14"
+  },
+  "feature_command": "python scripts/build_p3_feature_file.py --candidates <candidate tsv> --source-dir <dataset split dir> --prefix <train|test> --output <parquet or dir> [--s1-batch 10000 for streaming]"
+}

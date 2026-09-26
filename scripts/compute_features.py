@@ -27,11 +27,11 @@ import polars as pl
 
 from business_entity_resolution.config import load_config
 from business_entity_resolution.similarity_features import (
-    FEATURE_VERSION, add_context_features, add_retrieval_features,
-    calculate_pair_features, model_feature_columns, prepare_records,
+    FEATURE_VERSION, NA_SENTINEL, NA_SENTINEL_OVERRIDES, add_context_features,
+    add_retrieval_features,
+    calculate_pair_features_parallel, model_feature_columns, validate_feature_frame,
 )
 from business_entity_resolution.pair_labels import READ_KW
-from business_entity_resolution.token_stats import TokenStats
 
 RETRIEVAL_COLUMNS = ("retrieval_route", "retrieval_rank", "retrieval_score")
 
@@ -49,6 +49,8 @@ def load_records(paths: list[Path], ids: set[str]) -> pl.DataFrame:
 
 
 def missing_report(df: pl.DataFrame, columns: list[str]) -> dict[str, dict[str, float]]:
+    """Per column: NaN/null rate (must be 0), not-applicable sentinel rate and inf count."""
+
     report = {}
     n = max(df.height, 1)
     for column in columns:
@@ -56,9 +58,12 @@ def missing_report(df: pl.DataFrame, columns: list[str]) -> dict[str, dict[str, 
         nulls = series.null_count()
         nans = int(series.is_nan().sum()) if series.dtype.is_float() else 0
         infs = int(series.is_infinite().sum()) if series.dtype.is_float() else 0
+        sentinel = NA_SENTINEL_OVERRIDES.get(column, NA_SENTINEL)
+        sentinels = int((series == sentinel).sum()) if series.dtype.is_float() else 0
         report[column] = {
             "dtype": str(series.dtype),
             "missing_rate": round((nulls + nans) / n, 5),
+            "not_applicable_rate": round(sentinels / n, 5),
             "inf_count": infs,
         }
     return report
@@ -72,9 +77,11 @@ def main() -> None:
     parser.add_argument("--token-stats", type=Path, default=Path("artifacts/token_stats.json"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--limit", type=int, default=0, help="first N pairs only (benchmark)")
-    parser.add_argument("--chunk-pairs", type=int, default=250_000)
+    parser.add_argument("--name-stats", type=Path, default=Path("artifacts/name_stats"))
+    parser.add_argument("--chunk-pairs", type=int, default=50_000)
     parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--no-context", action="store_true")
+    parser.add_argument("--context", action="store_true",
+                        help="also add ctx_* features (not part of the frozen model set)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
     paths = load_config(args.config).paths
@@ -98,39 +105,28 @@ def main() -> None:
         .select("source1_entity_id", "candidate_entity_id", "target_source", *passthrough)
         .sort("source1_entity_id", "candidate_entity_id")
     )
-    token_stats = TokenStats.load(args.token_stats)
-
     t0 = time.time()
     s1_raw = load_records(s1_paths, set(pairs["source1_entity_id"].unique().to_list()))
     sec_raw = load_records(sec_paths, set(pairs["candidate_entity_id"].unique().to_list()))
     t_load = time.time() - t0
     t0 = time.time()
-    s1_prep = prepare_records(s1_raw, workers=args.workers)
-    sec_prep = prepare_records(sec_raw, workers=args.workers)
-    t_prepare = time.time() - t0
-    logging.info("loaded %.1fs, prepared %d+%d records in %.1fs",
-                 t_load, len(s1_prep), len(sec_prep), t_prepare)
-
-    t0 = time.time()
-    parts = []
-    for offset in range(0, pairs.height, args.chunk_pairs):
-        chunk = pairs.slice(offset, args.chunk_pairs)
-        parts.append(calculate_pair_features(chunk, s1_prep, sec_prep, token_stats))
-        logging.info("features %d/%d pairs", min(offset + args.chunk_pairs, pairs.height),
-                     pairs.height)
-    features = pl.concat(parts)
+    features = calculate_pair_features_parallel(
+        pairs, s1_raw, sec_raw, args.token_stats, args.name_stats,
+        processes=args.workers, chunk_pairs=args.chunk_pairs,
+    )
+    validate_feature_frame(features)
     t_pair = time.time() - t0
     t0 = time.time()
     if has_retrieval:
         features = add_retrieval_features(features, pairs_long)
-    if not args.no_context:
+    if args.context:
         features = add_context_features(features)
     t_context = time.time() - t0
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     features.write_parquet(args.output)
     feature_columns = model_feature_columns(
-        include_context=not args.no_context, include_retrieval=has_retrieval
+        include_context=args.context, include_retrieval=has_retrieval
     )
     report = {
         "feature_version": FEATURE_VERSION,
@@ -139,13 +135,11 @@ def main() -> None:
         "positives": int(features["label"].sum()) if "label" in features.columns else None,
         "n_features": len(feature_columns),
         "seconds": {
-            "load": round(t_load, 1), "prepare_records": round(t_prepare, 1),
-            "pair_features": round(t_pair, 1), "context": round(t_context, 1),
+            "load": round(t_load, 1),
+            "pair_features_incl_prepare": round(t_pair, 1), "context": round(t_context, 1),
         },
         "pair_features_per_second": round(features.height / max(t_pair, 1e-9)),
-        "end_to_end_pairs_per_second": round(
-            features.height / max(t_prepare + t_pair + t_context, 1e-9)
-        ),
+        "end_to_end_pairs_per_second": round(features.height / max(t_pair + t_context, 1e-9)),
         "peak_rss_mb": round(peak_rss_mb(), 1),
         "workers": args.workers,
         "features": missing_report(features, feature_columns),

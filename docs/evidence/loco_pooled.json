@@ -1,0 +1,42 @@
+{
+  "India/baseline/loco": {
+    "threshold": 0.76,
+    "macro_f05": 0.834382,
+    "entities": 3997
+  },
+  "India/baseline/in_country": {
+    "threshold": 0.64,
+    "macro_f05": 0.85444,
+    "entities": 3997
+  },
+  "India/p3/loco": {
+    "threshold": 0.91,
+    "macro_f05": 0.855921,
+    "entities": 3997
+  },
+  "India/p3/in_country": {
+    "threshold": 0.63,
+    "macro_f05": 0.860461,
+    "entities": 3997
+  },
+  "US/baseline/loco": {
+    "threshold": 0.53,
+    "macro_f05": 0.944644,
+    "entities": 6084
+  },
+  "US/baseline/in_country": {
+    "threshold": 0.72,
+    "macro_f05": 0.954766,
+    "entities": 6084
+  },
+  "US/p3/loco": {
+    "threshold": 0.62,
+    "macro_f05": 0.959819,
+    "entities": 6084
+  },
+  "US/p3/in_country": {
+    "threshold": 0.81,
+    "macro_f05": 0.962137,
+    "entities": 6084
+  }
+}

@@ -1,0 +1,4 @@
+== baseline_pooled -> frozen_pooled (Person 2 candidates)
+{'a_threshold': 0.75, 'a_macro_f05': 0.97101, 'b_threshold': 0.72, 'b_macro_f05': 0.98777, 'mean_diff': 0.01676, 'ci95': [0.014883693651105753, 0.018537085867934854], 'p_b_not_better': 0.0, 'entities_improved': 1346, 'entities_worse': 162}
+== baseline_separate -> frozen_separate (Person 2 candidates)
+{'a_threshold': 0.74, 'a_macro_f05': 0.97088, 'b_threshold': 0.75, 'b_macro_f05': 0.98776, 'mean_diff': 0.01688, 'ci95': [0.015135490805437732, 0.018608025183984116], 'p_b_not_better': 0.0, 'entities_improved': 1320, 'entities_worse': 174}

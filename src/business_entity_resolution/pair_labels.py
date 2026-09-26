@@ -235,7 +235,8 @@ def classify_hard_negatives(features: pl.DataFrame) -> pl.DataFrame:
     """
 
     name = name_evidence_expr()
-    addr = pl.col("addr_token_set_ratio").fill_nan(None)
+    addr = pl.when(pl.col("addr_any_missing") == 1).then(None).otherwise(
+        pl.col("addr_token_set_ratio").fill_nan(None))
     return (
         features.filter(pl.col("label") == 0)
         .with_columns(_name=name, _addr=addr)

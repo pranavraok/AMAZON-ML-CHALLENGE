@@ -1,0 +1,14 @@
+{
+  "source1": 50000,
+  "rows": 9052389,
+  "rows_with_repaired_empty_target_source": 1501728,
+  "seconds": 386.2,
+  "config": {
+    "name_top_k": 100,
+    "address_top_k": 20,
+    "name_min_score": 0.3,
+    "address_min_score": 0.0,
+    "rare_token_max_postings": 50,
+    "numeric_token_max_postings": 100
+  }
+}

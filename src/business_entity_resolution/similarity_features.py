@@ -14,8 +14,12 @@ Public entry points
 ``add_retrieval_features(features, candidates_long)``
     Optional aggregation of Person 2's retrieval route / rank / score columns.
 
-Missing evidence contract: when either address is missing, every address
-similarity is NaN (never 0.0) and ``addr_missing_*`` flags are set.
+Missing evidence contract: "not applicable" values (a missing address, an
+address without numbers, a name whose tokens are all matched) are written as an
+out-of-range sentinel, never as a plausible similarity and never as NaN:
+-1.0 for features whose valid range is >= 0, and -5.0 for the noise log-ratio
+features (valid range is bounded below by log(N_S1 / N_S2S3) ~ -1.65). The
+``addr_missing_*`` flags and number counts make every sentinel explicit.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from __future__ import annotations
 from concurrent.futures import ProcessPoolExecutor
 import math
 import os
-from typing import Sequence
+from typing import Mapping, Sequence
 
 import numpy as np
 import polars as pl
@@ -31,9 +35,12 @@ from rapidfuzz import fuzz, process
 from rapidfuzz.distance import JaroWinkler, Levenshtein
 
 from business_entity_resolution.feature_text import prepare_address, prepare_name
+from business_entity_resolution.name_stats import (
+    NAME_FREQUENCY_SCHEMA, add_name_frequency_features, core_hash, load_token_noise,
+)
 from business_entity_resolution.token_stats import TokenStats
 
-FEATURE_VERSION = "p3-v1.1"
+FEATURE_VERSION = "p3-v2.1"
 
 ID_COLUMNS = ("source1_entity_id", "candidate_entity_id", "target_source")
 
@@ -78,6 +85,8 @@ PAIR_FEATURE_SCHEMA: dict[str, pl.DataType] = {
     "name_non_latin_a": pl.Int8,
     "name_non_latin_b": pl.Int8,
     "name_script_mismatch": pl.Int8,
+    "name_a_unmatched_max_noise": pl.Float32,
+    "name_b_unmatched_max_noise": pl.Float32,
     # --- address ----------------------------------------------------------
     "addr_missing_a": pl.Int8,
     "addr_missing_b": pl.Int8,
@@ -105,6 +114,10 @@ PAIR_FEATURE_SCHEMA: dict[str, pl.DataType] = {
     "addr_num_suffix_match": pl.Int8,
     "addr_num_conflict": pl.Int8,
     "addr_longest_num_equal": pl.Int8,
+    "addr_primary_equal": pl.Float32,
+    "addr_primary_cross": pl.Float32,
+    "addr_num_only_a": pl.Int8,
+    "addr_num_only_b": pl.Int8,
     # --- combined evidence ------------------------------------------------
     "combo_min": pl.Float32,
     "combo_max": pl.Float32,
@@ -141,6 +154,12 @@ RETRIEVAL_FEATURE_SCHEMA: dict[str, pl.DataType] = {
 }
 RETRIEVAL_FEATURE_COLUMNS = tuple(RETRIEVAL_FEATURE_SCHEMA)
 
+NA_SENTINEL = -1.0
+NA_SENTINEL_OVERRIDES = {
+    "name_a_unmatched_max_noise": -5.0,
+    "name_b_unmatched_max_noise": -5.0,
+}
+
 _SOFT_TOKEN_THRESHOLD = 80.0
 _NAME_KEYS = (
     "name_unicode", "name_latin", "name_core", "name_core_sorted", "name_nospace",
@@ -149,7 +168,7 @@ _NAME_KEYS = (
 )
 _ADDRESS_KEYS = (
     "address_latin", "address_skeleton", "address_tokens", "address_alpha_tokens",
-    "address_numbers", "address_longest_number", "address_missing",
+    "address_numbers", "address_longest_number", "address_primary_number", "address_missing",
 )
 
 
@@ -216,16 +235,19 @@ def _cpdist(a: list[str], b: list[str], scorer, workers: int) -> np.ndarray:
     return process.cpdist(a, b, scorer=scorer, workers=workers, dtype=np.float32)
 
 
-def _soft_idf(tokens_a, tokens_b, set_b, idf, skel_a=None, skel_b=None) -> tuple[float, float]:
+def _soft_idf(tokens_a, tokens_b, set_b, idf, skel_a=None, skel_b=None, noise=None):
     """Directional soft-IDF coverage of A by B, plus max IDF of unmatched A tokens.
 
     A token counts as covered when an exact, fuzzy (ratio >= 80) or, when
-    skeletons are given, phonetic-skeleton match exists in B.
+    skeletons are given, phonetic-skeleton match exists in B. With ``noise``
+    (token -> S2/S3-vs-S1 log ratio) a third value is returned: the largest
+    noise ratio among unmatched A tokens (NaN when every token is matched).
     """
 
     total = 0.0
     covered = 0.0
     unmatched = 0.0
+    noise_max = -math.inf
     skel_set_b = set(skel_b) if skel_b else ()
     for position, token in enumerate(tokens_a):
         weight = idf(token)
@@ -242,8 +264,16 @@ def _soft_idf(tokens_a, tokens_b, set_b, idf, skel_a=None, skel_b=None) -> tuple
                 best = score
         if best >= _SOFT_TOKEN_THRESHOLD:
             covered += weight * best / 100.0
-        elif weight > unmatched:
+            continue
+        if weight > unmatched:
             unmatched = weight
+        if noise is not None:
+            noise_max = max(noise_max, noise.get(token, 0.0))
+    if noise is not None:
+        noise_value = math.nan if noise_max == -math.inf else noise_max
+        if total == 0.0:
+            return math.nan, math.nan, noise_value
+        return covered / total, unmatched, noise_value
     if total == 0.0:
         return math.nan, math.nan
     return covered / total, unmatched
@@ -293,10 +323,15 @@ def calculate_pair_features(
     secondary: PreparedTable | pl.DataFrame,
     token_stats: TokenStats,
     *,
+    name_noise: Mapping[str, float],
     workers: int = -1,
     prepare_workers: int = 1,
 ) -> pl.DataFrame:
     """Compute the frozen pair-feature schema for every row of ``pairs``.
+
+    ``name_noise`` comes from ``name_stats.load_token_noise``. The output also
+    carries two Int64 helper columns (``_core_hash_a/_b``) that
+    ``name_stats.add_name_frequency_features`` consumes and drops.
 
     ``pairs`` needs ``source1_entity_id`` and ``candidate_entity_id``; a
     ``target_source`` column is derived from the ID prefix when absent. Extra
@@ -390,7 +425,8 @@ def calculate_pair_features(
         "addr_unmatched_max_idf", "addr_ntok_a", "addr_ntok_b",
         "addr_num_count_a", "addr_num_count_b", "addr_num_jaccard", "addr_num_shared",
         "addr_num_any_shared", "addr_num_suffix_match", "addr_num_conflict",
-        "addr_longest_num_equal",
+        "addr_longest_num_equal", "name_a_unmatched_max_noise", "name_b_unmatched_max_noise",
+        "addr_primary_equal", "addr_primary_cross", "addr_num_only_a", "addr_num_only_b",
     )
     buffers = {name: np.empty(n, dtype=np.float32) for name in loop_names}
     name_idf = token_stats.name_idf
@@ -416,8 +452,10 @@ def calculate_pair_features(
         buffers["name_idf_jaccard"][i] = idf_j
         buffers["name_shared_max_idf"][i] = shared_max
         ka, kb = A["name_core_skeleton_tokens"][i], B["name_core_skeleton_tokens"][i]
-        cov_ab, un_a = _soft_idf(ta, tb, sb, name_idf, ka, kb)
-        cov_ba, un_b = _soft_idf(tb, ta, sa, name_idf, kb, ka)
+        cov_ab, un_a, noise_a = _soft_idf(ta, tb, sb, name_idf, ka, kb, name_noise)
+        cov_ba, un_b, noise_b = _soft_idf(tb, ta, sa, name_idf, kb, ka, name_noise)
+        buffers["name_a_unmatched_max_noise"][i] = noise_a
+        buffers["name_b_unmatched_max_noise"][i] = noise_b
         buffers["name_soft_idf_min"][i] = min(cov_ab, cov_ba)
         buffers["name_soft_idf_max"][i] = max(cov_ab, cov_ba)
         buffers["name_unmatched_max_idf"][i] = max(un_a, un_b)
@@ -453,6 +491,18 @@ def calculate_pair_features(
             A["address_numbers"][i], B["address_numbers"][i],
             A["address_longest_number"][i], B["address_longest_number"][i],
         )
+        num_a, num_b = A["address_numbers"][i], B["address_numbers"][i]
+        buffers["addr_num_only_a"][i] = min(len(num_a - num_b), 127)
+        buffers["addr_num_only_b"][i] = min(len(num_b - num_a), 127)
+        prim_a, prim_b = A["address_primary_number"][i], B["address_primary_number"][i]
+        if prim_a and prim_b:
+            buffers["addr_primary_equal"][i] = prim_a == prim_b
+            buffers["addr_primary_cross"][i] = (
+                set(prim_a.split(".")) <= num_b and set(prim_b.split(".")) <= num_a
+            )
+        else:
+            buffers["addr_primary_equal"][i] = nan
+            buffers["addr_primary_cross"][i] = nan
         if any_missing[i]:
             for key in (
                 "addr_token_jaccard", "addr_token_containment", "addr_alpha_containment",
@@ -505,8 +555,16 @@ def calculate_pair_features(
     features = pl.DataFrame(
         {name: pl.Series(name, out[name]).cast(dtype, strict=False)
          for name, dtype in PAIR_FEATURE_SCHEMA.items()}
+    ).with_columns(
+        pl.col(name).fill_nan(NA_SENTINEL_OVERRIDES.get(name, NA_SENTINEL))
+        .fill_null(NA_SENTINEL_OVERRIDES.get(name, NA_SENTINEL))
+        for name, dtype in PAIR_FEATURE_SCHEMA.items() if dtype.is_float()
     )
-    return pl.concat([pairs, features], how="horizontal")
+    hashes = pl.DataFrame({
+        "_core_hash_a": [core_hash(c) for c in A["name_core"]],
+        "_core_hash_b": [core_hash(c) for c in B["name_core"]],
+    }, schema={"_core_hash_a": pl.Int64, "_core_hash_b": pl.Int64})
+    return pl.concat([pairs, features, hashes], how="horizontal")
 
 
 # Single "name evidence" definition shared by combo, context and hard-negative
@@ -536,11 +594,12 @@ def add_context_features(features: pl.DataFrame) -> pl.DataFrame:
 
     name_score = name_evidence_expr()
     # Missing addresses give null rank/gap (NaN), never a fake low score.
-    addr_score = pl.col("addr_token_set_ratio").fill_nan(None)
+    addr_score = pl.when(pl.col("addr_any_missing") == 1).then(None).otherwise(
+        pl.col("addr_token_set_ratio"))
     s1 = "source1_entity_id"
     cand = "candidate_entity_id"
     df = features.with_columns(
-        _name=name_score, _addr=addr_score, _combo=pl.col("combo_mean").fill_nan(0.0)
+        _name=name_score, _addr=addr_score, _combo=pl.col("combo_mean")
     )
     df = df.with_columns(
         ctx_n_candidates=pl.len().over(s1),
@@ -591,7 +650,7 @@ def add_retrieval_features(features: pl.DataFrame, candidates_long: pl.DataFrame
 
 
 def model_feature_columns(include_context: bool = True, include_retrieval: bool = False) -> list[str]:
-    columns = list(PAIR_FEATURE_COLUMNS)
+    columns = list(PAIR_FEATURE_COLUMNS) + list(NAME_FREQUENCY_SCHEMA)
     if include_context:
         columns += CONTEXT_FEATURE_COLUMNS
     if include_retrieval:
@@ -601,6 +660,79 @@ def model_feature_columns(include_context: bool = True, include_retrieval: bool 
 
 def default_workers() -> int:
     return max(1, (os.cpu_count() or 2) - 1)
+
+
+# ---------------------------------------------------------------------------
+# Process-parallel driver (same function, same output as the serial path)
+# ---------------------------------------------------------------------------
+
+_WORKER_STATS: TokenStats | None = None
+_WORKER_NOISE: dict[str, float] | None = None
+
+
+def _init_worker(token_stats_path: str, name_stats_dir: str) -> None:
+    global _WORKER_STATS, _WORKER_NOISE
+    _WORKER_STATS = TokenStats.load(token_stats_path)
+    _WORKER_NOISE = load_token_noise(name_stats_dir)
+
+
+def _feature_chunk(payload: tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]) -> pl.DataFrame:
+    pairs, s1_raw, sec_raw = payload
+    return calculate_pair_features(
+        pairs, prepare_records(s1_raw), prepare_records(sec_raw), _WORKER_STATS,
+        name_noise=_WORKER_NOISE, workers=1,
+    )
+
+
+def calculate_pair_features_parallel(
+    pairs: pl.DataFrame,
+    source1_raw: pl.DataFrame,
+    secondary_raw: pl.DataFrame,
+    token_stats_path: str | os.PathLike,
+    name_stats_dir: str | os.PathLike,
+    *,
+    processes: int | None = None,
+    chunk_pairs: int = 50_000,
+) -> pl.DataFrame:
+    """Run ``calculate_pair_features`` over S1-aligned chunks in worker processes.
+
+    Each worker receives only the raw records its chunk references, prepares
+    them and computes features, so nothing large is pickled. Chunks never split
+    an S1 group and results are concatenated in input order, so the output is
+    identical to one serial call. Name-frequency features are joined here, so
+    the result is ready for ``add_context_features``.
+    """
+
+    processes = processes or default_workers()
+    source1_raw = source1_raw.with_columns(pl.all().fill_null(""))
+    secondary_raw = secondary_raw.with_columns(pl.all().fill_null(""))
+    group_ids = pairs["source1_entity_id"]
+    # Chunk boundaries only where the S1 id changes (pairs are expected grouped).
+    boundaries = [0]
+    change = (group_ids != group_ids.shift(1)).fill_null(True).to_numpy()
+    starts = np.flatnonzero(change)
+    next_cut = chunk_pairs
+    for start in starts:
+        if start >= next_cut:
+            boundaries.append(int(start))
+            next_cut = start + chunk_pairs
+    boundaries.append(pairs.height)
+    payloads = []
+    for lo, hi in zip(boundaries[:-1], boundaries[1:]):
+        chunk = pairs.slice(lo, hi - lo)
+        payloads.append((
+            chunk,
+            source1_raw.filter(pl.col("entity_id").is_in(chunk["source1_entity_id"].unique().implode())),
+            secondary_raw.filter(pl.col("entity_id").is_in(chunk["candidate_entity_id"].unique().implode())),
+        ))
+    if processes <= 1 or len(payloads) <= 1:
+        _init_worker(str(token_stats_path), str(name_stats_dir))
+        features = pl.concat([_feature_chunk(p) for p in payloads])
+    else:
+        with ProcessPoolExecutor(processes, initializer=_init_worker,
+                                 initargs=(str(token_stats_path), str(name_stats_dir))) as pool:
+            features = pl.concat(list(pool.map(_feature_chunk, payloads)))
+    return add_name_frequency_features(features, name_stats_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -672,6 +804,16 @@ FEATURE_DESCRIPTIONS: dict[str, str] = {
     "addr_num_suffix_match": "No exact shared number but one ends with another (5550 vs 550)",
     "addr_num_conflict": "Both have numbers, none shared and no suffix match",
     "addr_longest_num_equal": "Longest address numbers equal (often house number or postcode)",
+    "addr_primary_equal": "Primary compound number (all numbers of the first numeric component, e.g. 8.3.898.30.3) equal; NaN if absent",
+    "addr_primary_cross": "Each side's primary numbers all appear in the other address; NaN if absent",
+    "addr_num_only_a": "Address numbers present only on the S1 side",
+    "addr_num_only_b": "Address numbers present only on the candidate side",
+    "name_a_unmatched_max_noise": "Max S2/S3-vs-S1 log frequency ratio among S1 core tokens with no fuzzy/skeleton partner (NaN if all matched)",
+    "name_b_unmatched_max_noise": "Same for candidate tokens; high = unmatched word looks like injected noise (services, holdings, www)",
+    "name_core_freq_s1_a": "log1p(# S1 records, train+test, with the S1 core name)",
+    "name_core_freq_sec_a": "log1p(# S2/S3 records with the S1 core name)",
+    "name_core_freq_s1_b": "log1p(# S1 records with the candidate core name)",
+    "name_core_freq_sec_b": "log1p(# S2/S3 records with the candidate core name)",
     "combo_min": "min(name evidence, address token-set); NaN if an address is missing",
     "combo_max": "max(name evidence, address token-set); NaN if an address is missing",
     "combo_product": "name evidence x address token-set; NaN if an address is missing",
@@ -697,3 +839,40 @@ FEATURE_DESCRIPTIONS: dict[str, str] = {
     "retr_max_score": "Max retrieval score over routes",
     "retr_score_gap": "Smallest gap to the top score of the same route within the S1",
 }
+
+
+# ---------------------------------------------------------------------------
+# Frozen model contract (Day 2). Context and retrieval features are excluded:
+# ablation showed context is neutral (95% CI spans zero on both architectures)
+# and both depend on whole-table/candidate-generation details that differ
+# between training (positive guards) and inference.
+# ---------------------------------------------------------------------------
+
+FROZEN_MODEL_FEATURES: tuple[str, ...] = tuple(model_feature_columns(include_context=False))
+FROZEN_FEATURE_DTYPES: dict[str, pl.DataType] = {
+    **PAIR_FEATURE_SCHEMA, **NAME_FREQUENCY_SCHEMA,
+}
+FROZEN_FEATURE_DTYPES = {c: FROZEN_FEATURE_DTYPES[c] for c in FROZEN_MODEL_FEATURES}
+
+
+def validate_feature_frame(features: pl.DataFrame) -> None:
+    """Raise if frozen columns are missing, mistyped, NaN/null, infinite or unexpected."""
+
+    missing = [c for c in FROZEN_MODEL_FEATURES if c not in features.columns]
+    if missing:
+        raise ValueError(f"feature frame is missing frozen columns: {missing}")
+    wrong = {c: str(features.schema[c]) for c, t in FROZEN_FEATURE_DTYPES.items()
+             if features.schema[c] != t}
+    if wrong:
+        raise ValueError(f"feature dtypes differ from the frozen contract: {wrong}")
+    infinite = [c for c, t in FROZEN_FEATURE_DTYPES.items()
+                if t.is_float() and int(features[c].is_infinite().sum())]
+    if infinite:
+        raise ValueError(f"infinite values in: {infinite}")
+    nan_or_null = [c for c, t in FROZEN_FEATURE_DTYPES.items()
+                   if features[c].null_count() or (t.is_float() and int(features[c].is_nan().sum()))]
+    if nan_or_null:
+        raise ValueError(f"NaN/null values in: {nan_or_null}")
+    leftovers = [c for c in features.columns if c.startswith("_core_hash")]
+    if leftovers:
+        raise ValueError("name-frequency join not applied (hash helper columns present)")

@@ -1,0 +1,22 @@
+{
+  "feature_version": "p3-v2.1",
+  "candidates_file": "data/work/p3d3/person2_candidates.tsv",
+  "pairs": 9052389,
+  "unique_s1": 50000,
+  "n_features": 79,
+  "workers": 10,
+  "chunk_pairs": 50000,
+  "load_seconds": 1.1,
+  "feature_seconds_incl_record_prep": 143.0,
+  "pairs_per_second": 63320,
+  "peak_rss_total_mb": 5362,
+  "peak_rss_main_mb": 5352,
+  "peak_rss_workers_mb": 4675,
+  "feature_table_mb": 2128,
+  "validate_feature_frame": "PASS (no NaN/null/inf, dtypes match frozen contract)",
+  "machine": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "cpus": 11,
+    "ram_gb": 18.0
+  }
+}

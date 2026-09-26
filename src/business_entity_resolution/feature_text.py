@@ -265,6 +265,7 @@ class PreparedRecord:
     address_alpha_tokens: frozenset[str]
     address_numbers: frozenset[str]
     address_longest_number: str
+    address_primary_number: str
     address_first_component: str
     address_missing: bool
     address_non_latin: bool
@@ -350,6 +351,15 @@ def prepare_address(raw: object) -> dict[str, object]:
     for t in tokens:
         if not t.isdigit():
             numbers.extend(_strip_leading_zeros(n) for n in _NUM_RE.findall(t))
+    # Primary number: all numbers of the first component that contains any digit,
+    # joined ("8-3-898/30/3" -> "8.3.898.30.3"); separates sibling addresses that
+    # share most individual numbers.
+    primary = ""
+    for comp in latin_components:
+        comp_numbers = [_strip_leading_zeros(n) for t in comp for n in _NUM_RE.findall(t)]
+        if comp_numbers:
+            primary = ".".join(comp_numbers)
+            break
     latin_text = " ".join(tokens)
     alpha = frozenset(t for t in tokens if not any(c.isdigit() for c in t))
     return {
@@ -361,6 +371,7 @@ def prepare_address(raw: object) -> dict[str, object]:
         "address_alpha_tokens": alpha,
         "address_numbers": frozenset(numbers),
         "address_longest_number": max(numbers, key=lambda n: (len(n), n)) if numbers else "",
+        "address_primary_number": primary,
         "address_first_component": " ".join(latin_components[0]) if latin_components else "",
         "address_missing": not tokens,
         "address_non_latin": non_latin,

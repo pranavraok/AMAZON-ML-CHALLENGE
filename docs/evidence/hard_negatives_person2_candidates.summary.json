@@ -1,0 +1,49 @@
+{
+  "features_file": "data/work/p3d3/p3_features_person2.parquet",
+  "training_folds_only_check": {
+    "validation_fold": 0,
+    "folds_used_for_cross_fitting": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "validation_fold_rows_used_for_mining": 0,
+    "validation_s1_in_hard_negatives": 0,
+    "oof_scores_from_models_that_never_saw_the_s1_group": true,
+    "labels_used_only_to_select_label_0_rows": true
+  },
+  "training_pairs": 7232706,
+  "hard_negatives": 4210,
+  "s1_with_hard_negatives": 3631,
+  "min_prob": 0.1,
+  "by_type": {
+    "other_retrieved": 1781,
+    "high_name_low_address": 1601,
+    "high_address_low_name": 549,
+    "near_duplicate": 258,
+    "common_name_collision": 21
+  },
+  "oof_negatives_ge_0.5": 1146,
+  "oof_positives_lt_0.5": 1679,
+  "weighting_experiment_pooled": {
+    "w=1": {
+      "best_threshold": 0.72,
+      "macro_f0_5": 0.9877712365748831,
+      "micro_precision": 0.995062521911885,
+      "micro_recall": 0.9754553786229808,
+      "false_positives": 169,
+      "false_negatives": 857,
+      "singleton_accuracy": 0.9761904761904762
+    },
+    "w=2": {
+      "best_threshold": 0.61,
+      "macro_f0_5": 0.9878799424198184,
+      "micro_precision": 0.9950327255726975,
+      "micro_recall": 0.9753121777981442,
+      "false_positives": 170,
+      "false_negatives": 862,
+      "singleton_accuracy": 0.9761904761904762
+    }
+  }
+}
