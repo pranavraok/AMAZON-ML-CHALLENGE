@@ -2,7 +2,7 @@
 
 Team repository for matching each Source 1 business to zero, one, or many records from Source 2 and Source 3.
 
-The repository contains a complete Person 1 Day 1 development pipeline: shared configuration, schemas, text normalization, deterministic subset creation, baseline candidate generation, comparison features, grouped validation, LightGBM training, inference, exact macro F0.5 evaluation, logging, and teammate interface contracts. The baseline candidate and feature modules are intentionally replaceable by the stronger Person 2 and Person 3 implementations.
+The repository contains complete Person 1 Day 1 and Day 2 development pipelines: shared configuration, schemas, text normalization, deterministic subset creation, baseline candidate generation, comparison features, grouped validation, pooled and source-specific LightGBM training, restartable chunked inference, exact macro F0.5 evaluation, error analysis, profiling, logging, and teammate interface contracts. The baseline candidate and feature modules are intentionally replaceable by the stronger Person 2 and Person 3 implementations.
 
 ## Challenge constraints built into the project
 
@@ -30,6 +30,7 @@ The repository contains a complete Person 1 Day 1 development pipeline: shared c
 |   |-- create_dev_subset.py
 |   |-- infer.py
 |   |-- run_day1_pipeline.py
+|   |-- run_day2_pipeline.py
 |   `-- train.py
 |-- src/business_entity_resolution/
 |   |-- __init__.py
@@ -38,6 +39,8 @@ The repository contains a complete Person 1 Day 1 development pipeline: shared c
 |   |-- cli.py
 |   |-- config.py
 |   |-- day1_pipeline.py
+|   |-- day2_pipeline.py
+|   |-- error_analysis.py
 |   |-- evaluation.py
 |   |-- features.py
 |   |-- modeling.py
@@ -170,6 +173,16 @@ python scripts/infer.py --features data/work/day1/features.tsv --model artifacts
 ```
 
 See `docs/day1_handoff.md` for the measured run and `docs/day1_integration_issues.md` for Day 2 owners.
+
+## Run Person 1 Day 2 integration
+
+After the complete Day 1 run exists, compare pooled versus separate S2/S3 models, tune thresholds, run restartable chunked inference, profile the medium-scale workload, and create the Person 4 error handoff:
+
+```bash
+python scripts/run_day2_pipeline.py --config configs/base.json
+```
+
+Generated files are written under `data/work/day2/` and `artifacts/day2/`. The provisional frozen choice is recorded in `configs/day2_frozen.json`. See `docs/day2_person1_handoff.md` for measured results and `docs/day2_final_run_checklist.md` for the final full-data and packaging gate.
 
 ## Team integration
 

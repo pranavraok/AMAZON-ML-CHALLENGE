@@ -261,6 +261,20 @@ def run_day1_pipeline(
                 if entity_id in validation_ids
             ),
         )
+        for target_source, records in (("source2", source2), ("source3", source3)):
+            write_tsv(
+                validation_test_dir / f"test_{target_source}.tsv",
+                SOURCE_COLUMNS,
+                (
+                    {
+                        "entity_id": record.entity_id,
+                        "business_name": record.business_name,
+                        "business_address": record.business_address,
+                        "country": record.country,
+                    }
+                    for _, record in sorted(records.items())
+                ),
+            )
         LOGGER.info(
             "macro_f0_5=%.6f threshold=%.2f matching_rows=%d candidate_rows=%d",
             evaluation["macro_f0_5"],

@@ -91,12 +91,20 @@ class Day1BaselineSettings:
 
 
 @dataclass(frozen=True)
+class Day2Settings:
+    num_boost_rounds: int
+    inference_chunk_size: int
+    selected_architecture: str
+
+
+@dataclass(frozen=True)
 class AppConfig:
     repository_root: Path
     project: ProjectSettings
     paths: PathSettings
     development_subset: DevelopmentSubsetSettings
     day1_baseline: Day1BaselineSettings
+    day2: Day2Settings
 
     def validate_inputs(self) -> list[Path]:
         return [path for path in self.paths.required_input_paths() if not path.is_file()]
@@ -133,6 +141,11 @@ class AppConfig:
                 "max_token_bucket": self.day1_baseline.max_token_bucket,
                 "num_boost_rounds": self.day1_baseline.num_boost_rounds,
             },
+            "day2": {
+                "num_boost_rounds": self.day2.num_boost_rounds,
+                "inference_chunk_size": self.day2.inference_chunk_size,
+                "selected_architecture": self.day2.selected_architecture,
+            },
         }
 
 
@@ -162,6 +175,7 @@ def load_config(config_path: str | Path) -> AppConfig:
     paths_raw = raw.get("paths", {})
     subset_raw = raw.get("development_subset", {})
     baseline_raw = raw.get("day1_baseline", {})
+    day2_raw = raw.get("day2", {})
 
     dataset_value = os.environ.get(
         DATASET_ENV_VAR,
@@ -204,6 +218,20 @@ def load_config(config_path: str | Path) -> AppConfig:
     if num_boost_rounds <= 0:
         raise ValueError("day1_baseline.num_boost_rounds must be positive")
 
+    day2_num_boost_rounds = int(day2_raw.get("num_boost_rounds", 350))
+    inference_chunk_size = int(day2_raw.get("inference_chunk_size", 100_000))
+    selected_architecture = str(
+        day2_raw.get("selected_architecture", "best_validation")
+    )
+    if day2_num_boost_rounds <= 0:
+        raise ValueError("day2.num_boost_rounds must be positive")
+    if inference_chunk_size <= 0:
+        raise ValueError("day2.inference_chunk_size must be positive")
+    if selected_architecture not in {"best_validation", "pooled", "separate"}:
+        raise ValueError(
+            "day2.selected_architecture must be best_validation, pooled, or separate"
+        )
+
     return AppConfig(
         repository_root=repository_root,
         project=ProjectSettings(
@@ -236,5 +264,10 @@ def load_config(config_path: str | Path) -> AppConfig:
             fallback_candidates_per_source=fallback_candidates_per_source,
             max_token_bucket=max_token_bucket,
             num_boost_rounds=num_boost_rounds,
+        ),
+        day2=Day2Settings(
+            num_boost_rounds=day2_num_boost_rounds,
+            inference_chunk_size=inference_chunk_size,
+            selected_architecture=selected_architecture,
         ),
     )

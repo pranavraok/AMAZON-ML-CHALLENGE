@@ -35,6 +35,8 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.development_subset.source1_count, 12)
             self.assertEqual(config.day1_baseline.n_folds, 5)
             self.assertEqual(config.day1_baseline.validation_fold, 0)
+            self.assertEqual(config.day2.num_boost_rounds, 350)
+            self.assertEqual(config.day2.inference_chunk_size, 100000)
 
 
 if __name__ == "__main__":

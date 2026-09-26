@@ -1,4 +1,5 @@
 {
+  "freeze_status": "provisional_pending_teammate_handoffs",
   "project": {
     "seed": 2026,
     "log_level": "INFO"
@@ -25,6 +26,6 @@
   "day2": {
     "num_boost_rounds": 350,
     "inference_chunk_size": 100000,
-    "selected_architecture": "best_validation"
+    "selected_architecture": "separate"
   }
 }
