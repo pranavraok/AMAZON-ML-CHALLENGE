@@ -138,6 +138,69 @@ Recorded so they are not retried:
   These need name-side fuzzy matching, which the Day 2 measurements show is
   expensive and low-yield at this scale.
 
+## OPEN: the `retrieval_route` contract needs a team decision
+
+`docs/interfaces.md` section 3 leaves this open and says the representation
+"must be documented before feature work is frozen". Measured on 200 S1
+(70,432 unique candidate pairs, 352.16 candidates/S1):
+
+| Question | Answer |
+| --- | --- |
+| One row per route, or one per unique pair? | **One per unique pair.** `CandidateGenerator.generate_for_one()` returns one `CandidateEvidence` per `candidate_entity_id`, with the routes merged into it. |
+| How many pairs carry more than one route? | **8.05%** (5,673 of 70,432), up to 12 routes on a single pair. |
+
+So `retrieval_route` is **multi-valued**, but section 3 declares it a
+`string`. Any consumer that treats it as one name silently keeps only one
+arbitrary route for those 8.05% of pairs.
+
+### Two concrete hazards for Person 3
+
+`CandidateEvidence` keeps `routes`, `scores` and `ranks` as three
+independent lists, and `add()` appends a route with **no** score for the
+blocking routes. Consequences, both measured:
+
+1. **`zip(routes, scores)` is wrong for 23.78% of pairs** (16,750 of
+   70,432). The lists are not index-parallel, so scores attach to the wrong
+   route with no error raised.
+2. **16.93% of pairs (11,922) have no score at all** - they came from
+   blocking alone. `retrieval_score` then returns `0.0` via
+   `max(self.scores) if self.scores else 0.0`.
+
+Hazard 2 directly contradicts `docs/interfaces.md` section 4: *"Missing
+evidence must have explicit flags; it must not silently become a plausible
+zero similarity."* A Person 3 feature built on `retrieval_score` would read
+"0.0 similarity" for roughly one candidate in six, when the truth is "this
+route does not compute a similarity at all". Those are very different
+features.
+
+### Recommended resolution (needs Person 1 and Person 3 to ratify)
+
+Keep one row per unique pair, but make the evidence explicit rather than
+implicit:
+
+- Replace the scalar `retrieval_score` / `retrieval_rank` properties with a
+  separate nullable score/rank **per route**, so the three lists can never
+  drift out of alignment.
+- Add a boolean `retrieval_score_available` (or an explicit sentinel) so a
+  blocking-only pair is distinguishable from a genuine zero similarity, per
+  section 4.
+- Add `route_count`, which is already computed and is a strong signal on its
+  own: multi-route agreement is exactly the corroboration signal a
+  classifier wants, and today it is computed but never exposed.
+
+This was deliberately **not** changed in the Day 2 commit, because it
+alters the Day 2 candidate-generation logic and the representation choice is
+a team decision, not Person 2's alone. Person 3 should confirm the feature
+schema against this before freezing features.
+
+### Second decision still open: candidate budget
+
+Unrelated to the representation question, and also unresolved: 6 of the 10
+remaining misses are address-rank misses that would need
+`address_top_k` 200-1000, at +55 to +680 candidates/S1. The configuration
+ships at `address_top_k=100` and was deliberately left there. This needs a
+team decision on the candidate budget before it can be revisited.
+
 ## Known limitations
 
 - The benchmark's `--limit` takes a deterministic **prefix** of
