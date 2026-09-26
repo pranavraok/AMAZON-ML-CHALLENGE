@@ -1,0 +1,2 @@
+[console_scripts]
+amazon-ml-er = business_entity_resolution.cli:main

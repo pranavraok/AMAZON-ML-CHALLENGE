@@ -1,0 +1,169 @@
+Metadata-Version: 2.4
+Name: amazon-ml-entity-resolution
+Version: 0.1.0
+Summary: Business entity resolution pipeline for Amazon ML Challenge 2026
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+
+# Amazon ML Challenge 2026 - Business Entity Resolution
+
+Team repository for matching each Source 1 business to zero, one, or many records from Source 2 and Source 3.
+
+The repository currently contains the Person 1 foundation: shared configuration, schemas, text normalization, deterministic development-subset creation, teammate interface contracts, and test coverage. Candidate generation, pair features, evaluation, and production model code will plug into these contracts.
+
+## Challenge constraints built into the project
+
+- Source files and outputs are tab-separated.
+- Every test Source 1 ID must appear exactly once in both output files.
+- Final matches may contain only valid Source 2 or Source 3 IDs.
+- `matching_results.tsv` contains the accepted matches.
+- `candidate_pairs.tsv` contains the exact final candidate set scored by the model.
+- The leaderboard metric is macro F0.5 per Source 1 entity, including singletons.
+- Training contains US and India; test additionally contains France. Country values are treated as open-set strings.
+- External business lookup, geocoding, registries, APIs, and web enrichment are prohibited.
+
+## Repository layout
+
+```text
+.
+|-- configs/
+|   `-- base.json
+|-- docs/
+|   |-- day1_person1_checklist.md
+|   `-- interfaces.md
+|-- output/
+|   `-- .gitkeep
+|-- scripts/
+|   `-- create_dev_subset.py
+|-- src/business_entity_resolution/
+|   |-- __init__.py
+|   |-- __main__.py
+|   |-- cli.py
+|   |-- config.py
+|   |-- normalization.py
+|   |-- schemas.py
+|   `-- subset.py
+|-- tests/
+|   |-- test_config.py
+|   |-- test_normalization.py
+|   `-- test_subset.py
+|-- pyproject.toml
+`-- requirements.txt
+```
+
+Datasets, generated subsets, Parquet files, models, logs, and submission outputs are intentionally excluded from Git.
+
+## Local setup
+
+Python 3.11 is recommended.
+
+```bash
+python -m venv .venv
+```
+
+Activate the environment, then install dependencies:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
+```
+
+The foundational subset and normalization tools use only the Python standard library, so their unit tests can run before the heavier ML dependencies are installed.
+
+## Point the project to the dataset
+
+The default local path is configured in `configs/base.json`. Override it without editing a tracked file:
+
+PowerShell:
+
+```powershell
+$env:AMAZON_ML_DATASET_ROOT = "C:\path\to\student_resource\dataset"
+```
+
+Bash:
+
+```bash
+export AMAZON_ML_DATASET_ROOT=/path/to/student_resource/dataset
+```
+
+Confirm the resolved configuration and required input files:
+
+```bash
+python -m business_entity_resolution show-config --config configs/base.json
+python -m business_entity_resolution validate-inputs --config configs/base.json
+```
+
+## Create the shared development subset
+
+The command selects Source 1 records deterministically, copies all of their true S2/S3 matches, and adds reproducible same-country distractor records. It preserves the original TSV schemas.
+
+```bash
+python scripts/create_dev_subset.py \
+  --config configs/base.json \
+  --source1-count 50000 \
+  --negative-multiplier 2.0
+```
+
+For a quick smoke test:
+
+```bash
+python scripts/create_dev_subset.py \
+  --config configs/base.json \
+  --source1-count 1000 \
+  --negative-multiplier 1.0 \
+  --output-dir data/dev-smoke
+```
+
+The generated directory contains:
+
+```text
+data/dev/
+|-- train/
+|   |-- train_source1.tsv
+|   |-- train_source2.tsv
+|   |-- train_source3.tsv
+|   `-- train_ground_truth.tsv
+`-- manifest.json
+```
+
+## Run tests
+
+Without installing the package:
+
+PowerShell:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m unittest discover -s tests -v
+```
+
+Bash:
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+## Team integration
+
+All teammate modules must follow [docs/interfaces.md](docs/interfaces.md). The interfaces define the candidate-pair columns, feature identifiers, output headers, ownership boundaries, and handoff rules.
+
+Do not rename shared columns or change normalization behavior without coordinating with all module owners.
+
+## Final submission target
+
+The packaging stage will produce:
+
+```text
+<team_name>_submission.zip
+|-- output/
+|   |-- matching_results.tsv
+|   `-- candidate_pairs.tsv
+|-- code/business_entity_resolution/
+|   |-- src/
+|   |-- README.md
+|   `-- requirements.txt
+`-- Documentation_template.md
+```
+
+Before submission, run the official validator supplied with the challenge package.
