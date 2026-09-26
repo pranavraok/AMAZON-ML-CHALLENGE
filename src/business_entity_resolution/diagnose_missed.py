@@ -14,6 +14,9 @@ from .metrics import find_missed_pairs
 
 DEV_DIR = Path("data/dev/train")
 
+# Same slice size the benchmark uses by default.
+BENCHMARK_LIMIT = 1000
+
 
 def load_source(path: Path) -> list:
     df = pd.read_csv(
@@ -107,15 +110,11 @@ def main():
         DEV_DIR / "train_ground_truth.tsv"
     )
 
-    # Same configuration used in the benchmark.
-    config = CandidateGenerationConfig(
-        name_top_k=20,
-        address_top_k=20,
-        name_min_score=0.0,
-        address_min_score=0.0,
-        rare_token_max_postings=50,
-        numeric_token_max_postings=100,
-    )
+    # Must be identical to the benchmark configuration, otherwise this tool
+    # diagnoses a different system than dev_candidate_generation reports on.
+    config = CandidateGenerationConfig()
+
+    print("Config:", config)
 
     print("Building S2 generator...")
     generator_s2 = CandidateGenerator(
@@ -129,8 +128,9 @@ def main():
         config=config,
     )
 
-    # Use the same first 1000 S1 records as the benchmark.
-    source1 = source1[:1000]
+    # The benchmark evaluates the first BENCHMARK_LIMIT S1 records unless
+    # --limit says otherwise, so mirror that here.
+    source1 = source1[:BENCHMARK_LIMIT]
 
     candidates_s2 = generator_s2.generate(source1)
     candidates_s3 = generator_s3.generate(source1)

@@ -1,16 +1,57 @@
+"""Country-aware blocking routes for Source 1 -> Source 2/3 candidate generation.
+
+Design notes
+------------
+Every route is partitioned by country. Countries are treated as open-set
+strings, so France and any other test country works without code changes.
+
+Blank addresses are treated as MISSING evidence, never as an exact match.
+An empty normalized address therefore cannot satisfy ``exact_address`` or
+``exact_combined``.
+
+Unicode evidence is preserved. Routes match on the Unicode-preserving
+normalized name. Transliteration is applied only as an *additional* route
+layered on top; it never replaces or discards the original Unicode view.
+
+Posting lists are capped so that common tokens cannot generate unbounded
+candidate buckets. The caps are configurable per route family.
+
+The exact index field names are validated once at construction time. A
+renamed or missing field raises immediately instead of silently disabling a
+route.
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict
+from itertools import combinations
 from typing import Dict, Iterable, List, Sequence
 
-
-try:
+try:  # optional, enables the transliteration routes
     from unidecode import unidecode
-except ImportError:
+except ImportError:  # pragma: no cover
     unidecode = None
 
 
+# Fields every indexed record must expose. These map to the shared
+# normalization contract in business_entity_resolution.normalization.
+_REQUIRED_FIELDS = (
+    "entity_id",
+    "country",
+    "name_unicode",
+    "name_token_sorted",
+    "address_unicode",
+)
+
+# Upper bound on how many address tokens take part in pair-key generation.
+# An address with k tokens yields k*(k-1)/2 pair keys, so this keeps index
+# construction linear in a predictable way for pathologically long addresses.
+_MAX_PAIR_TOKENS = 12
+
+
 class CandidateEvidence:
+    """Accumulated retrieval evidence for one S1 -> S2/S3 candidate pair."""
+
     def __init__(
         self,
         source1_entity_id: str,
@@ -53,38 +94,55 @@ class CandidateEvidence:
     def retrieval_rank(self) -> int:
         return min(self.ranks) if self.ranks else 10**9
 
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return (
+            f"CandidateEvidence({self.candidate_entity_id!r}, "
+            f"target_source={self.target_source!r}, routes={self.routes!r})"
+        )
+
+
+def _country(record) -> str:
+    return str(getattr(record, "country", "") or "").strip().lower()
+
 
 def _tokens(text: str) -> List[str]:
+    """Whitespace tokens of length >= 2. Single characters carry no signal."""
     if not text:
         return []
-
-    return [
-        x for x in str(text).split()
-        if len(x) >= 2
-    ]
+    return [x for x in str(text).split() if len(x) >= 2]
 
 
 def _numeric_tokens(text: str) -> List[str]:
+    """Numeric tokens of length >= 2, with leading zeros stripped.
+
+    Stripping leading zeros lets '14' and '0014' agree, which is a real
+    pattern in the data (S1 ``F. No.-14-A`` vs target ``F. No.-0014-a``).
+    """
     if not text:
         return []
 
-    result = []
+    result: list[str] = []
 
     for token in str(text).split():
+        digits = "".join(ch for ch in token if ch.isdigit())
 
-        digits = "".join(
-            ch for ch in token
-            if ch.isdigit()
-        )
+        if len(digits) < 2:
+            continue
 
-        if len(digits) >= 2:
-            result.append(digits)
+        trimmed = digits.lstrip("0")
+
+        result.append(trimmed if trimmed else "0")
 
     return result
 
 
 def _transliterate(text: str) -> str:
+    """Romanize text for the optional transliteration routes.
 
+    Returns the input unchanged when ``unidecode`` is unavailable, so the
+    transliteration routes degrade into duplicates of the Unicode routes
+    instead of crashing or silently corrupting evidence.
+    """
     if not text:
         return ""
 
@@ -96,7 +154,27 @@ def _transliterate(text: str) -> str:
     return " ".join(text.split())
 
 
+def _address_pair_keys(text: str) -> List[tuple]:
+    """Sorted address-token pair keys for co-occurrence blocking.
+
+    Individual address tokens such as 'delhi' or 'new' are far too common to
+    block on, so a per-token posting cap rejects every record that shares them.
+    A *pair* of common tokens is far more selective: ('delhi', 'new') is a
+    small bucket even though both tokens individually are not.
+    """
+    tokens = sorted(set(_tokens(text)))
+
+    if len(tokens) < 2:
+        return []
+
+    if len(tokens) > _MAX_PAIR_TOKENS:
+        tokens = tokens[:_MAX_PAIR_TOKENS]
+
+    return list(combinations(tokens, 2))
+
+
 class BlockingIndex:
+    """Inverted indexes over target records for cheap country-aware blocking."""
 
     def __init__(
         self,
@@ -105,144 +183,128 @@ class BlockingIndex:
         rare_token_max_postings: int = 50,
         numeric_token_max_postings: int = 100,
         translit_token_max_postings: int = 100,
+        address_token_max_postings: int = 50,
+        address_pair_max_postings: int = 5,
     ) -> None:
 
         self.records = list(records)
 
+        if rare_token_max_postings <= 0:
+            raise ValueError("rare_token_max_postings must be positive")
+        if numeric_token_max_postings <= 0:
+            raise ValueError("numeric_token_max_postings must be positive")
+        if translit_token_max_postings <= 0:
+            raise ValueError("translit_token_max_postings must be positive")
+        if address_token_max_postings <= 0:
+            raise ValueError("address_token_max_postings must be positive")
+        if address_pair_max_postings <= 0:
+            raise ValueError("address_pair_max_postings must be positive")
+
         self.rare_token_max_postings = rare_token_max_postings
         self.numeric_token_max_postings = numeric_token_max_postings
         self.translit_token_max_postings = translit_token_max_postings
+        self.address_token_max_postings = address_token_max_postings
+        self.address_pair_max_postings = address_pair_max_postings
 
-        # Exact indexes
-        self.name_index = defaultdict(list)
-        self.token_name_index = defaultdict(list)
-        self.address_index = defaultdict(list)
-        self.combined_index = defaultdict(list)
+        # Exact keys, country-partitioned.
+        self.name_index: Dict[tuple, List[str]] = defaultdict(list)
+        self.token_name_index: Dict[tuple, List[str]] = defaultdict(list)
+        self.address_index: Dict[tuple, List[str]] = defaultdict(list)
+        self.combined_index: Dict[tuple, List[str]] = defaultdict(list)
 
-        # Token indexes
-        self.name_token_index = defaultdict(list)
-        self.address_token_index = defaultdict(list)
-        self.numeric_address_index = defaultdict(list)
+        # Token keys, country-partitioned.
+        self.name_token_index: Dict[tuple, List[str]] = defaultdict(list)
+        self.address_token_index: Dict[tuple, List[str]] = defaultdict(list)
+        self.address_pair_index: Dict[tuple, List[str]] = defaultdict(list)
+        self.numeric_address_index: Dict[tuple, List[str]] = defaultdict(list)
 
-        # Global strong keys
-        self.global_name_index = defaultdict(list)
-        self.global_token_name_index = defaultdict(list)
-        self.global_combined_index = defaultdict(list)
-
-        # Transliteration
-        self.translit_name_index = defaultdict(list)
-        self.translit_token_index = defaultdict(list)
+        # Transliteration keys, country-partitioned.
+        self.translit_name_index: Dict[tuple, List[str]] = defaultdict(list)
+        self.translit_token_index: Dict[tuple, List[str]] = defaultdict(list)
 
         self._build()
 
-    # ============================================================
+    # ================================================================
     # BUILD
-    # ============================================================
+    # ================================================================
 
-    def _build(self):
+    def _validate_records(self) -> None:
+        """Fail loudly if the indexed records do not match the shared contract.
+
+        The previous implementation read ``name_compact``/``address_compact``
+        through ``getattr(..., "")``. Those attributes do not exist on
+        ``NormalizedRecord``, so every route that used them silently returned
+        nothing. Validating once here makes that class of bug impossible.
+        """
+        if not self.records:
+            raise ValueError("BlockingIndex requires at least one record")
+
+        missing = [
+            field
+            for field in _REQUIRED_FIELDS
+            if not hasattr(self.records[0], field)
+        ]
+        if missing:
+            raise ValueError(
+                "indexed records are missing required normalized fields: "
+                f"{missing}. Expected objects produced by "
+                "business_entity_resolution.normalization.normalize_record()."
+            )
+
+    def _build(self) -> None:
+
+        self._validate_records()
 
         for record in self.records:
 
             entity_id = record.entity_id
+            country = _country(record)
 
-            country = (
-                getattr(record, "country", "") or ""
-            ).strip().lower()
-
-            name = getattr(
-                record,
-                "name_compact",
-                "",
-            )
-
-            token_name = getattr(
-                record,
-                "name_token_sorted",
-                "",
-            )
-
-            address = getattr(
-                record,
-                "address_compact",
-                "",
-            )
+            name = record.name_unicode
+            token_name = record.name_token_sorted
+            address = record.address_unicode
 
             # ----------------------------------------------------
-            # Exact name
+            # Exact name / combined keys
             # ----------------------------------------------------
 
             if name:
-
-                self.name_index[
-                    (country, name)
-                ].append(entity_id)
-
-                self.global_name_index[
-                    name
-                ].append(entity_id)
-
-            # ----------------------------------------------------
-            # Token sorted name
-            # ----------------------------------------------------
+                self.name_index[(country, name)].append(entity_id)
 
             if token_name:
-
-                self.token_name_index[
-                    (country, token_name)
-                ].append(entity_id)
-
-                self.global_token_name_index[
-                    token_name
-                ].append(entity_id)
-
-            # ----------------------------------------------------
-            # Exact address
-            # ----------------------------------------------------
+                self.token_name_index[(country, token_name)].append(entity_id)
 
             if address:
+                self.address_index[(country, address)].append(entity_id)
 
-                self.address_index[
-                    (country, address)
-                ].append(entity_id)
-
-            # ----------------------------------------------------
-            # Combined name + address
-            # ----------------------------------------------------
-
+            # A combined key needs real evidence on both sides. A blank
+            # address is missing evidence, not a shared value.
             if name and address:
-
                 self.combined_index[
                     (country, name, address)
-                ].append(entity_id)
-
-                self.global_combined_index[
-                    (name, address)
                 ].append(entity_id)
 
             # ----------------------------------------------------
             # Name tokens
             # ----------------------------------------------------
 
-            name_unicode = getattr(
-                record,
-                "name_unicode",
-                "",
-            )
-
-            for token in _tokens(name_unicode):
-
-                self.name_token_index[
-                    (country, token)
-                ].append(entity_id)
+            for token in _tokens(name):
+                self.name_token_index[(country, token)].append(entity_id)
 
             # ----------------------------------------------------
             # Address tokens
             # ----------------------------------------------------
 
             for token in _tokens(address):
+                self.address_token_index[(country, token)].append(entity_id)
 
-                self.address_token_index[
-                    (country, token)
+            # ----------------------------------------------------
+            # Address token-pair co-occurrence keys
+            # ----------------------------------------------------
+
+            for first, second in _address_pair_keys(address):
+                self.address_pair_index[
+                    (country, first, second)
                 ].append(entity_id)
 
             # ----------------------------------------------------
@@ -250,32 +312,29 @@ class BlockingIndex:
             # ----------------------------------------------------
 
             for token in _numeric_tokens(address):
-
                 self.numeric_address_index[
                     (country, token)
                 ].append(entity_id)
 
             # ----------------------------------------------------
-            # Transliteration
+            # Transliteration (additional evidence, never a replacement)
             # ----------------------------------------------------
 
-            translit = _transliterate(name_unicode)
+            translit = _transliterate(name)
 
             if translit:
-
-                self.translit_name_index[
-                    (country, translit)
-                ].append(entity_id)
+                self.translit_name_index[(country, translit)].append(
+                    entity_id
+                )
 
                 for token in _tokens(translit):
-
                     self.translit_token_index[
                         (country, token)
                     ].append(entity_id)
 
-    # ============================================================
+    # ================================================================
     # ADD
-    # ============================================================
+    # ================================================================
 
     @staticmethod
     def _add_ids(
@@ -287,7 +346,7 @@ class BlockingIndex:
         *,
         score: float | None = None,
         rank: int | None = None,
-    ):
+    ) -> None:
 
         for entity_id in ids:
 
@@ -308,230 +367,149 @@ class BlockingIndex:
                 rank=rank,
             )
 
-    # ============================================================
+    def _add_key(
+        self,
+        evidence: Dict[str, CandidateEvidence],
+        record,
+        target_source: str,
+        index: Dict[tuple, List[str]],
+        key: tuple,
+        route: str,
+    ) -> None:
+        ids = index.get(key)
+        if ids:
+            self._add_ids(
+                evidence,
+                record.entity_id,
+                target_source,
+                ids,
+                route,
+            )
+
+    # ================================================================
     # EXACT COMBINED
-    # ============================================================
+    # ================================================================
 
     def exact_combined(
         self,
         record,
-        evidence,
-        target_source,
-    ):
+        evidence: Dict[str, CandidateEvidence],
+        target_source: str,
+    ) -> None:
 
-        name = getattr(
-            record,
-            "name_compact",
-            "",
-        )
+        name = record.name_unicode
+        address = record.address_unicode
 
-        address = getattr(
-            record,
-            "address_compact",
-            "",
-        )
-
+        # Both sides must carry real evidence.
         if not name or not address:
             return
 
-        country = (
-            getattr(record, "country", "") or ""
-        ).strip().lower()
-
-        ids = self.combined_index.get(
-            (country, name, address),
-            [],
-        )
-
-        self._add_ids(
+        self._add_key(
             evidence,
-            record.entity_id,
+            record,
             target_source,
-            ids,
+            self.combined_index,
+            (_country(record), name, address),
             "exact_combined",
         )
 
-        ids = self.global_combined_index.get(
-            (name, address),
-            [],
-        )
-
-        self._add_ids(
-            evidence,
-            record.entity_id,
-            target_source,
-            ids,
-            "exact_combined_global",
-        )
-
-    # ============================================================
+    # ================================================================
     # EXACT NAME
-    # ============================================================
+    # ================================================================
 
     def exact_name(
         self,
         record,
-        evidence,
-        target_source,
-    ):
+        evidence: Dict[str, CandidateEvidence],
+        target_source: str,
+    ) -> None:
 
-        name = getattr(
-            record,
-            "name_compact",
-            "",
-        )
+        name = record.name_unicode
 
         if not name:
             return
 
-        country = (
-            getattr(record, "country", "") or ""
-        ).strip().lower()
-
-        ids = self.name_index.get(
-            (country, name),
-            [],
-        )
-
-        self._add_ids(
+        self._add_key(
             evidence,
-            record.entity_id,
+            record,
             target_source,
-            ids,
+            self.name_index,
+            (_country(record), name),
             "exact_name",
         )
 
-        ids = self.global_name_index.get(
-            name,
-            [],
-        )
-
-        self._add_ids(
-            evidence,
-            record.entity_id,
-            target_source,
-            ids,
-            "exact_name_global",
-        )
-
-    # ============================================================
+    # ================================================================
     # TOKEN SORTED NAME
-    # ============================================================
+    # ================================================================
 
     def token_sorted_name(
         self,
         record,
-        evidence,
-        target_source,
-    ):
+        evidence: Dict[str, CandidateEvidence],
+        target_source: str,
+    ) -> None:
 
-        name = getattr(
-            record,
-            "name_token_sorted",
-            "",
-        )
+        token_name = record.name_token_sorted
 
-        if not name:
+        if not token_name:
             return
 
-        country = (
-            getattr(record, "country", "") or ""
-        ).strip().lower()
-
-        ids = self.token_name_index.get(
-            (country, name),
-            [],
-        )
-
-        self._add_ids(
+        self._add_key(
             evidence,
-            record.entity_id,
+            record,
             target_source,
-            ids,
+            self.token_name_index,
+            (_country(record), token_name),
             "token_sorted_name",
         )
 
-        ids = self.global_token_name_index.get(
-            name,
-            [],
-        )
-
-        self._add_ids(
-            evidence,
-            record.entity_id,
-            target_source,
-            ids,
-            "token_sorted_name_global",
-        )
-
-    # ============================================================
+    # ================================================================
     # EXACT ADDRESS
-    # ============================================================
+    # ================================================================
 
     def exact_address(
         self,
         record,
-        evidence,
-        target_source,
-    ):
+        evidence: Dict[str, CandidateEvidence],
+        target_source: str,
+    ) -> None:
 
-        address = getattr(
-            record,
-            "address_compact",
-            "",
-        )
+        address = record.address_unicode
 
+        # A blank address is missing evidence, not an exact match.
         if not address:
             return
 
-        country = (
-            getattr(record, "country", "") or ""
-        ).strip().lower()
-
-        ids = self.address_index.get(
-            (country, address),
-            [],
-        )
-
-        self._add_ids(
+        self._add_key(
             evidence,
-            record.entity_id,
+            record,
             target_source,
-            ids,
+            self.address_index,
+            (_country(record), address),
             "exact_address",
         )
 
-    # ============================================================
+    # ================================================================
     # RARE NAME TOKENS
-    # ============================================================
+    # ================================================================
 
     def rare_name_tokens(
         self,
         record,
-        evidence,
-        target_source,
-    ):
+        evidence: Dict[str, CandidateEvidence],
+        target_source: str,
+    ) -> None:
 
-        country = (
-            getattr(record, "country", "") or ""
-        ).strip().lower()
+        country = _country(record)
 
-        name = getattr(
-            record,
-            "name_unicode",
-            "",
-        )
+        for token in _tokens(record.name_unicode):
 
-        for token in _tokens(name):
-
-            ids = self.name_token_index.get(
-                (country, token),
-                [],
-            )
+            ids = self.name_token_index.get((country, token))
 
             if not ids:
                 continue
 
+            # Common tokens are not informative. Skip rather than flood.
             if len(ids) > self.rare_token_max_postings:
                 continue
 
@@ -543,50 +521,41 @@ class BlockingIndex:
                 "rare_name_tokens",
             )
 
-    # ============================================================
+    # ================================================================
     # ADDRESS TOKENS
-    # ============================================================
+    # ================================================================
 
     def address_tokens(
         self,
         record,
-        evidence,
-        target_source,
-    ):
+        evidence: Dict[str, CandidateEvidence],
+        target_source: str,
+    ) -> None:
 
-        country = (
-            getattr(record, "country", "") or ""
-        ).strip().lower()
+        country = _country(record)
 
-        address = getattr(
-            record,
-            "address_compact",
-            "",
-        )
-
-        tokens = _tokens(address)
+        tokens = _tokens(record.address_unicode)
 
         if not tokens:
             return
 
-        counts = defaultdict(int)
+        counts: dict[str, int] = defaultdict(int)
 
         for token in tokens:
 
-            ids = self.address_token_index.get(
-                (country, token),
-                [],
-            )
+            ids = self.address_token_index.get((country, token))
 
             if not ids:
                 continue
 
-            if len(ids) > self.rare_token_max_postings:
+            if len(ids) > self.address_token_max_postings:
                 continue
 
             for entity_id in ids:
                 counts[entity_id] += 1
 
+        # Require more than one shared address token so that a single very
+        # common token cannot qualify a candidate on its own.
         for entity_id, count in counts.items():
 
             if count < 2:
@@ -600,33 +569,58 @@ class BlockingIndex:
                 "address_tokens",
             )
 
-    # ============================================================
+    # ================================================================
+    # ADDRESS TOKEN PAIRS
+    # ================================================================
+
+    def address_token_pairs(
+        self,
+        record,
+        evidence: Dict[str, CandidateEvidence],
+        target_source: str,
+    ) -> None:
+
+        country = _country(record)
+
+        # A blank address yields no pair keys, so missing evidence can never
+        # produce a match here.
+        for first, second in _address_pair_keys(record.address_unicode):
+
+            ids = self.address_pair_index.get((country, first, second))
+
+            if not ids:
+                continue
+
+            # The cap applies to the COMBINED bucket. Co-occurring common
+            # tokens stay usable because the pair is far more selective
+            # than either token alone.
+            if len(ids) > self.address_pair_max_postings:
+                continue
+
+            self._add_ids(
+                evidence,
+                record.entity_id,
+                target_source,
+                ids,
+                "address_token_pair",
+            )
+
+    # ================================================================
     # NUMERIC ADDRESS
-    # ============================================================
+    # ================================================================
 
     def numeric_address(
         self,
         record,
-        evidence,
-        target_source,
-    ):
+        evidence: Dict[str, CandidateEvidence],
+        target_source: str,
+    ) -> None:
 
-        country = (
-            getattr(record, "country", "") or ""
-        ).strip().lower()
+        country = _country(record)
 
-        address = getattr(
-            record,
-            "address_compact",
-            "",
-        )
+        for token in _numeric_tokens(record.address_unicode):
 
-        for token in _numeric_tokens(address):
-
-            ids = self.numeric_address_index.get(
-                (country, token),
-                [],
-            )
+            ids = self.numeric_address_index.get((country, token))
 
             if not ids:
                 continue
@@ -642,57 +636,43 @@ class BlockingIndex:
                 "numeric_address",
             )
 
-    # ============================================================
-    # TRANSLITERATION - FAST ONLY
-    # ============================================================
+    # ================================================================
+    # TRANSLITERATION
+    # ================================================================
 
     def transliterated_name(
         self,
         record,
-        evidence,
-        target_source,
-    ):
+        evidence: Dict[str, CandidateEvidence],
+        target_source: str,
+    ) -> None:
 
-        country = (
-            getattr(record, "country", "") or ""
-        ).strip().lower()
+        country = _country(record)
 
-        name = getattr(
-            record,
-            "name_unicode",
-            "",
-        )
-
-        query = _transliterate(name)
+        query = _transliterate(record.name_unicode)
 
         if not query:
             return
 
-        # Exact transliterated name
-        ids = self.translit_name_index.get(
-            (country, query),
-            [],
-        )
-
-        self._add_ids(
+        self._add_key(
             evidence,
-            record.entity_id,
+            record,
             target_source,
-            ids,
+            self.translit_name_index,
+            (country, query),
             "transliterated_exact_name",
         )
 
-        # Transliteration token matching
         query_tokens = _tokens(query)
 
-        counts = defaultdict(int)
+        if not query_tokens:
+            return
+
+        counts: dict[str, int] = defaultdict(int)
 
         for token in query_tokens:
 
-            ids = self.translit_token_index.get(
-                (country, token),
-                [],
-            )
+            ids = self.translit_token_index.get((country, token))
 
             if not ids:
                 continue
@@ -705,11 +685,8 @@ class BlockingIndex:
 
         for entity_id, count in counts.items():
 
-            # One token is acceptable for very short names.
-            if (
-                count >= 2
-                or len(query_tokens) <= 2
-            ):
+            # One shared token is acceptable only for very short names.
+            if count >= 2 or len(query_tokens) <= 2:
 
                 self._add_ids(
                     evidence,
@@ -719,65 +696,31 @@ class BlockingIndex:
                     "transliterated_token",
                 )
 
-    # ============================================================
+    # ================================================================
     # MAIN
-    # ============================================================
+    # ================================================================
+
+    ROUTES = (
+        "exact_combined",
+        "exact_name",
+        "token_sorted_name",
+        "exact_address",
+        "rare_name_tokens",
+        "address_tokens",
+        "address_token_pairs",
+        "numeric_address",
+        "transliterated_name",
+    )
 
     def generate(
         self,
         record,
         target_source: str = "",
-    ):
+    ) -> List[CandidateEvidence]:
 
-        evidence = {}
+        evidence: Dict[str, CandidateEvidence] = {}
 
-        self.exact_combined(
-            record,
-            evidence,
-            target_source,
-        )
+        for route in self.ROUTES:
+            getattr(self, route)(record, evidence, target_source)
 
-        self.exact_name(
-            record,
-            evidence,
-            target_source,
-        )
-
-        self.token_sorted_name(
-            record,
-            evidence,
-            target_source,
-        )
-
-        self.exact_address(
-            record,
-            evidence,
-            target_source,
-        )
-
-        self.rare_name_tokens(
-            record,
-            evidence,
-            target_source,
-        )
-
-        self.address_tokens(
-            record,
-            evidence,
-            target_source,
-        )
-
-        self.numeric_address(
-            record,
-            evidence,
-            target_source,
-        )
-
-        self.transliterated_name(
-            record,
-            evidence,
-            target_source,
-        )
-
-        # candidate_generation.py expects CandidateEvidence objects
         return list(evidence.values())

@@ -1,26 +1,48 @@
+"""Generate the submission-view ``output/candidate_pairs.tsv`` from test sources.
+
+This is the full-test entry point. It is NOT part of Day-2 validation and
+must not be run until the chunked architecture described in the README is in
+place: it still holds S2 and S3 fully in memory.
+
+Output contract (docs/interfaces.md section 7):
+
+    source1_entity_id<TAB>candidate_entity_ids
+
+* UTF-8 TSV, LF line endings, exactly two columns.
+* One row for every test S1 ID, including entities with no candidates.
+* Comma-separated S2/S3 IDs, no duplicates.
+* This must be the exact candidate set handed to model inference.
+"""
+
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 from pathlib import Path
+import sys
+import time
 
 from business_entity_resolution.candidate_generation import (
     CandidateGenerationConfig,
     CandidateGenerator,
 )
-from business_entity_resolution.normalization import normalize_record
+from business_entity_resolution.config import DATASET_ENV_VAR
+from business_entity_resolution.normalization import (
+    NormalizedRecord,
+    normalize_record,
+)
+from business_entity_resolution.schemas import CANDIDATE_RESULTS_COLUMNS
 
 
-DATASET_ROOT = Path(os.environ["AMAZON_ML_DATASET_ROOT"])
-TEST_DIR = DATASET_ROOT / "test"
-OUTPUT_PATH = Path("output") / "candidate_pairs.tsv"
+DEFAULT_OUTPUT_PATH = Path("output") / "candidate_pairs.tsv"
 
 
-def load_tsv(path: Path):
-    records = []
+def load_tsv(path: Path) -> list[dict]:
+    records: list[dict] = []
 
-    with path.open("r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f, delimiter="\t")
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
 
         required = {
             "entity_id",
@@ -49,190 +71,180 @@ def load_tsv(path: Path):
     return records
 
 
-def normalize_records(records):
-    return [
-        normalize_record(record)
-        for record in records
-    ]
+def normalize_records(records) -> list[NormalizedRecord]:
+    return [normalize_record(record) for record in records]
 
 
-def write_candidates(source1, candidates):
-    OUTPUT_PATH.parent.mkdir(
-        parents=True,
-        exist_ok=True,
+def resolve_dataset_root(explicit: str | None) -> Path:
+    """Resolve the dataset root without exploding at import time."""
+
+    if explicit:
+        return Path(explicit)
+
+    from_environment = os.environ.get(DATASET_ENV_VAR)
+
+    if not from_environment:
+        raise SystemExit(
+            f"Dataset root not provided. Pass --dataset-root or set "
+            f"{DATASET_ENV_VAR}."
+        )
+
+    return Path(from_environment)
+
+
+def open_writer(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    handle = path.open("w", encoding="utf-8", newline="")
+
+    writer = csv.writer(
+        handle,
+        delimiter="\t",
+        lineterminator="\n",
     )
+    writer.writerow(list(CANDIDATE_RESULTS_COLUMNS))
 
-    with OUTPUT_PATH.open(
-        "w",
-        encoding="utf-8",
-        newline="",
-    ) as f:
+    return handle, writer
 
-        writer = csv.writer(
-            f,
-            delimiter="\t",
+
+def write_candidate_row(writer, s1_entity_id: str, evidence_list) -> int:
+    """Write one S1 row. Returns the number of candidates written."""
+
+    seen: set[str] = set()
+    candidate_ids: list[str] = []
+
+    for evidence in evidence_list:
+        candidate_id = str(evidence.candidate_entity_id)
+
+        if candidate_id in seen:
+            continue
+
+        seen.add(candidate_id)
+        candidate_ids.append(candidate_id)
+
+    # An entity with no candidates still gets a row, with an empty list.
+    writer.writerow([s1_entity_id, ",".join(candidate_ids)])
+
+    return len(candidate_ids)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Generate candidate_pairs.tsv for the test sources. "
+            "Full-scale only."
         )
-
-        writer.writerow(
-            [
-                "source1_entity_id",
-                "candidate_entity_ids",
-            ]
-        )
-
-        for s1 in source1:
-
-            evidence_list = candidates.get(
-                s1.entity_id,
-                [],
-            )
-
-            candidate_ids = []
-            seen = set()
-
-            for evidence in evidence_list:
-
-                candidate_id = str(
-                    evidence.candidate_entity_id
-                )
-
-                if candidate_id not in seen:
-                    seen.add(candidate_id)
-                    candidate_ids.append(candidate_id)
-
-            writer.writerow(
-                [
-                    s1.entity_id,
-                    ",".join(candidate_ids),
-                ]
-            )
+    )
+    parser.add_argument("--dataset-root", default=None)
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH))
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Only process the first N S1 records (smoke testing).",
+    )
+    return parser.parse_args(argv)
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
 
-    print("Dataset:")
-    print(DATASET_ROOT)
+    args = parse_args(argv)
+
+    dataset_root = resolve_dataset_root(args.dataset_root)
+    test_dir = dataset_root / "test"
+    output_path = Path(args.output)
+
+    print(f"Dataset root: {dataset_root}")
+    print(f"Output:       {output_path}")
+    print(f"Config:       {CandidateGenerationConfig()}")
+
+    started = time.perf_counter()
 
     print("\nLoading test files...")
 
-    s1_raw = load_tsv(
-        TEST_DIR / "test_source1.tsv"
-    )
-
-    s2_raw = load_tsv(
-        TEST_DIR / "test_source2.tsv"
-    )
-
-    s3_raw = load_tsv(
-        TEST_DIR / "test_source3.tsv"
-    )
+    s1_raw = load_tsv(test_dir / "test_source1.tsv")
+    s2_raw = load_tsv(test_dir / "test_source2.tsv")
+    s3_raw = load_tsv(test_dir / "test_source3.tsv")
 
     print(f"S1: {len(s1_raw):,}")
     print(f"S2: {len(s2_raw):,}")
     print(f"S3: {len(s3_raw):,}")
 
+    if args.limit is not None:
+        if args.limit <= 0:
+            raise SystemExit("--limit must be greater than 0")
+        s1_raw = s1_raw[: args.limit]
+        print(f"Limiting to first {len(s1_raw):,} S1 records.")
+
     print("\nNormalizing...")
 
-    s1 = normalize_records(s1_raw)
-    s2 = normalize_records(s2_raw)
-    s3 = normalize_records(s3_raw)
+    source1 = normalize_records(s1_raw)
+    del s1_raw
+    source2 = normalize_records(s2_raw)
+    del s2_raw
+    source3 = normalize_records(s3_raw)
+    del s3_raw
 
     print("Normalization complete.")
 
-    config = CandidateGenerationConfig(
-        name_top_k=100,
-        address_top_k=20,
-        name_min_score=0.30,
-        address_min_score=0.0,
-        rare_token_max_postings=50,
-        numeric_token_max_postings=100,
-    )
-
     print("\nBuilding S2 candidate generator...")
-
-    generator_s2 = CandidateGenerator(
-        target_records=s2,
-        config=config,
-    )
+    generator_s2 = CandidateGenerator(target_records=source2)
 
     print("Building S3 candidate generator...")
+    generator_s3 = CandidateGenerator(target_records=source3)
 
-    generator_s3 = CandidateGenerator(
-        target_records=s3,
-        config=config,
-    )
+    total = len(source1)
+    running_total = 0
 
-    candidates_by_source1 = {}
+    print(f"\nGenerating candidates for {total:,} S1 records...")
 
-    total = len(s1)
+    # Rows are streamed straight to disk so the full candidate set is never
+    # resident in memory at once.
+    handle, writer = open_writer(output_path)
 
-    print(
-        f"\nGenerating candidates for {total:,} S1 records..."
-    )
+    try:
+        for position, record in enumerate(source1, start=1):
 
-    for i, record in enumerate(s1, start=1):
+            merged = generator_s2.generate_for_one(record)
+            merged += generator_s3.generate_for_one(record)
 
-        candidates_s2 = generator_s2.generate_for_one(
-            record
-        )
+            seen: set[str] = set()
+            unique: list = []
 
-        candidates_s3 = generator_s3.generate_for_one(
-            record
-        )
-
-        merged = []
-        seen = set()
-
-        for evidence in candidates_s2 + candidates_s3:
-
-            candidate_id = str(
-                evidence.candidate_entity_id
-            )
-
-            if candidate_id not in seen:
+            for evidence in merged:
+                candidate_id = str(evidence.candidate_entity_id)
+                if candidate_id in seen:
+                    continue
                 seen.add(candidate_id)
-                merged.append(evidence)
+                unique.append(evidence)
 
-        candidates_by_source1[
-            record.entity_id
-        ] = merged
-
-        if i % 500 == 0 or i == total:
-
-            total_so_far = sum(
-                len(values)
-                for values in candidates_by_source1.values()
+            running_total += write_candidate_row(
+                writer, record.entity_id, unique
             )
 
-            print(
-                f"[{i:,}/{total:,}] "
-                f"avg candidates = "
-                f"{total_so_far / i:.2f}"
-            )
+            if position % 5000 == 0 or position == total:
+                elapsed = time.perf_counter() - started
+                print(
+                    f"[{position:,}/{total:,}] "
+                    f"avg candidates = {running_total / position:.2f} "
+                    f"elapsed = {elapsed:.0f}s "
+                    f"eta = "
+                    f"{elapsed / position * (total - position):.0f}s"
+                )
+    finally:
+        handle.close()
 
-    print("\nWriting candidate_pairs.tsv...")
-
-    write_candidates(
-        s1,
-        candidates_by_source1,
-    )
-
-    total_pairs = sum(
-        len(values)
-        for values in candidates_by_source1.values()
-    )
-
-    print("\n========================================")
+    print("\n" + "=" * 56)
     print("FINAL CANDIDATE GENERATION COMPLETE")
-    print("========================================")
-    print(f"S1 records: {len(s1):,}")
-    print(f"Candidate pairs: {total_pairs:,}")
-    print(
-        f"Average candidates/S1: "
-        f"{total_pairs / len(s1):.2f}"
-    )
-    print(f"Output: {OUTPUT_PATH}")
+    print("=" * 56)
+    print(f"S1 records written: {total:,}")
+    print(f"Candidate pairs:    {running_total:,}")
+    print(f"Average candidates/S1: {running_total / max(1, total):.2f}")
+    print(f"Runtime:            {time.perf_counter() - started:.0f}s")
+    print(f"Output:             {output_path}")
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

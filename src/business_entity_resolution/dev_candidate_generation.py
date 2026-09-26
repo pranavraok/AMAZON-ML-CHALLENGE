@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 from pathlib import Path
+import time
+import tracemalloc
 
 import pandas as pd
 
@@ -100,6 +103,9 @@ def main() -> None:
 
     dev_dir = Path(args.dev_dir)
 
+    started = time.perf_counter()
+    tracemalloc.start()
+
     s1_path = dev_dir / "train_source1.tsv"
     s2_path = dev_dir / "train_source2.tsv"
     s3_path = dev_dir / "train_source3.tsv"
@@ -160,14 +166,17 @@ def main() -> None:
 
     # ---------------------------------------------------------
     # CONFIG
+    #
+    # Use the dataclass defaults so the benchmark always measures the
+    # configuration the pipeline actually ships with.
     # ---------------------------------------------------------
 
-    config = CandidateGenerationConfig(
-    name_top_k=100,
-address_top_k=20,
-name_min_score=0.30,
-address_min_score=0.0,
-)
+    config = CandidateGenerationConfig()
+
+    print("\nConfiguration:")
+    print(f"  {config}")
+
+    build_started = time.perf_counter()
     # ---------------------------------------------------------
     # S2
     # ---------------------------------------------------------
@@ -194,13 +203,19 @@ address_min_score=0.0,
     # GENERATE
     # ---------------------------------------------------------
 
-    print("\nGenerating S2 candidates...")
+    print("Generating S2 candidates...")
+
+    generate_started = time.perf_counter()
 
     candidates_s2 = generator_s2.generate(source1)
 
     print("Generating S3 candidates...")
 
     candidates_s3 = generator_s3.generate(source1)
+
+    generate_seconds = time.perf_counter() - generate_started
+
+    build_seconds = generate_started - build_started
 
     # ---------------------------------------------------------
     # COMBINE
@@ -292,6 +307,61 @@ address_min_score=0.0,
     print(
         f"Maximum candidates/S1:         "
         f"{report.maximum_candidate_count}"
+    )
+
+    # ---------------------------------------------------------
+    # ROUTE CONTRIBUTION
+    # ---------------------------------------------------------
+
+    route_pairs = defaultdict(int)
+    route_entities = defaultdict(int)
+
+    for evidence_list in all_candidates.values():
+        seen_routes = set()
+        for evidence in evidence_list:
+            for route in evidence.routes:
+                route_pairs[route] += 1
+            seen_routes.update(evidence.routes)
+        for route in seen_routes:
+            route_entities[route] += 1
+
+    print()
+    print("Route contribution (candidate pairs / S1 entities touched):")
+    for route, pairs in sorted(
+        route_pairs.items(), key=lambda kv: -kv[1]
+    ):
+        print(
+            f"  {route:26s} {pairs:>12,}  "
+            f"{route_entities[route]:>8,}"
+        )
+
+    # ---------------------------------------------------------
+    # COST
+    # ---------------------------------------------------------
+
+    current_bytes, peak_bytes = tracemalloc.get_traced_memory()
+
+    print()
+    print(
+        f"S1 entities evaluated:         "
+        f"{len(source1):,}"
+    )
+    print(
+        f"Index build time:              "
+        f"{build_seconds:.1f}s"
+    )
+    print(
+        f"Candidate generation time:     "
+        f"{generate_seconds:.1f}s "
+        f"({generate_seconds / max(1, len(source1)) * 1000:.1f} ms/S1)"
+    )
+    print(
+        f"Total wall clock:              "
+        f"{time.perf_counter() - started:.1f}s"
+    )
+    print(
+        f"Python peak memory:            "
+        f"{peak_bytes / 1024 ** 3:.2f} GB"
     )
 
     print("=" * 60)

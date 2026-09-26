@@ -1,9 +1,14 @@
 """Candidate generation pipeline for Source 1 -> Source 2/3.
 
-Combines cheap blocking routes with character n-gram TF-IDF retrieval.
+Combines cheap country-aware blocking routes with character n-gram TF-IDF
+retrieval.
 
-The final candidate set produced here is the set that should be passed
-to the matching model.
+The final candidate set produced here is the set that is passed to the
+matching model, so ``candidate_pairs.tsv`` must contain every final match.
+
+Configuration defaults reflect the Day-2 development measurements on the
+50k S1 development subset. See ``docs/interfaces.md`` for the column
+contract this output must satisfy.
 """
 
 from __future__ import annotations
@@ -23,20 +28,45 @@ from business_entity_resolution.retrieval import (
 
 @dataclass(frozen=True)
 class CandidateGenerationConfig:
-    """Configuration for candidate generation."""
+    """Configuration for candidate generation.
 
-    name_top_k: int = 20
-    address_top_k: int = 20
+    The address settings are deliberately deeper than the name settings.
+    In the development data the dominant cause of missed true pairs is a
+    cross-script name: the S1 name is Latin script while the true S2/S3
+    match is written in a local script, so name similarity is exactly 0.
+    The address is the only surviving evidence for those pairs.
+    """
 
-    name_min_score: float = 0.0
-    address_min_score: float = 0.0
+    # Name retrieval. name_min_score stays high on purpose: the true targets
+    # for misspelled Latin names sit at rank 125-2116, so extra top-K depth
+    # buys almost nothing while adding hundreds of low-value candidates.
+    name_top_k: int = 100
+    name_min_score: float = 0.30
 
+    # Address retrieval. True address similarity for missed pairs measured
+    # 0.128-0.418 with ranks 22-1686, so both depth and a real score floor
+    # are needed. 0.15 keeps almost all of that band and rejects the
+    # zero-similarity filler that min_score=0.0 used to admit.
+    address_top_k: int = 100
+    address_min_score: float = 0.15
+
+    # Blocking posting caps.
     rare_token_max_postings: int = 50
     numeric_token_max_postings: int = 100
+    translit_token_max_postings: int = 100
+    address_token_max_postings: int = 50
+
+    # Cap on an address token-PAIR bucket. Pairs of co-occurring address
+    # tokens recover cross-script pairs that no other route reaches, at a
+    # measured cost of about 7 extra candidates per S1.
+    address_pair_max_postings: int = 5
+
+    # Character n-gram range shared by both TF-IDF retrievers.
+    ngram_range: tuple[int, int] = (3, 5)
 
 
 class CandidateGenerator:
-    """Generate candidates for S1 against one target source."""
+    """Generate candidates for S1 against one target source (S2 or S3)."""
 
     def __init__(
         self,
@@ -61,6 +91,16 @@ class CandidateGenerator:
                 "Target records must belong to S2 or S3"
             )
 
+        prefixes = {
+            record.entity_id.split("-", 1)[0]
+            for record in target_records
+        }
+        if prefixes != {self.target_source}:
+            raise ValueError(
+                "All target records must belong to a single source; "
+                f"found {sorted(prefixes)}"
+            )
+
         # ---------------------------------------------------------
         # Blocking
         # ---------------------------------------------------------
@@ -68,7 +108,18 @@ class CandidateGenerator:
         self.blocking_index = BlockingIndex(
             target_records,
             rare_token_max_postings=self.config.rare_token_max_postings,
-            numeric_token_max_postings=self.config.numeric_token_max_postings,
+            numeric_token_max_postings=(
+                self.config.numeric_token_max_postings
+            ),
+            translit_token_max_postings=(
+                self.config.translit_token_max_postings
+            ),
+            address_token_max_postings=(
+                self.config.address_token_max_postings
+            ),
+            address_pair_max_postings=(
+                self.config.address_pair_max_postings
+            ),
         )
 
         # ---------------------------------------------------------
@@ -78,7 +129,7 @@ class CandidateGenerator:
         self.name_retriever = CharacterTfidfRetriever(
             target_records,
             field="name",
-            ngram_range=(3, 5),
+            ngram_range=self.config.ngram_range,
             top_k=self.config.name_top_k,
             min_score=self.config.name_min_score,
         )
@@ -86,36 +137,10 @@ class CandidateGenerator:
         self.address_retriever = CharacterTfidfRetriever(
             target_records,
             field="address",
-            ngram_range=(3, 5),
+            ngram_range=self.config.ngram_range,
             top_k=self.config.address_top_k,
             min_score=self.config.address_min_score,
         )
-
-    # =============================================================
-    # MERGING
-    # =============================================================
-
-    @staticmethod
-    def _merge_evidence(
-        destination: dict[str, CandidateEvidence],
-        source: dict[str, CandidateEvidence],
-    ) -> None:
-        """Merge candidate evidence from one retrieval route."""
-
-        for candidate_id, candidate in source.items():
-
-            if candidate_id not in destination:
-                destination[candidate_id] = candidate
-                continue
-
-            existing = destination[candidate_id]
-
-            for route in candidate.routes:
-                if route not in existing.routes:
-                    existing.routes.append(route)
-
-            existing.scores.extend(candidate.scores)
-            existing.ranks.extend(candidate.ranks)
 
     # =============================================================
     # ONE S1 RECORD
@@ -133,62 +158,52 @@ class CandidateGenerator:
         # 1. Blocking routes
         # ---------------------------------------------------------
 
+        # The target source must be passed through so that every candidate
+        # carries a real "S2"/"S3" value, as docs/interfaces.md requires.
         blocking_candidates = self.blocking_index.generate(
-            source1
+            source1,
+            self.target_source,
         )
 
         for candidate in blocking_candidates:
-            evidence[candidate.candidate_entity_id] = candidate
+            existing = evidence.get(candidate.candidate_entity_id)
+
+            if existing is None:
+                evidence[candidate.candidate_entity_id] = candidate
+                continue
+
+            for route in candidate.routes:
+                existing.add(route)
 
         # ---------------------------------------------------------
-        # 2. Name TF-IDF
+        # 2. TF-IDF retrieval (name, then address)
         # ---------------------------------------------------------
 
-        name_results = self.name_retriever.retrieve(source1)
+        for results in (
+            self.name_retriever.retrieve(source1),
+            self.address_retriever.retrieve(source1),
+        ):
 
-        for result in name_results:
+            for result in results:
 
-            candidate_id = result.candidate_entity_id
+                candidate_id = result.candidate_entity_id
 
-            if candidate_id not in evidence:
+                candidate = evidence.get(candidate_id)
 
-                evidence[candidate_id] = CandidateEvidence(
-                    source1_entity_id=source1.entity_id,
-                    candidate_entity_id=candidate_id,
-                    target_source=result.target_source,
+                if candidate is None:
+
+                    candidate = CandidateEvidence(
+                        source1_entity_id=source1.entity_id,
+                        candidate_entity_id=candidate_id,
+                        target_source=result.target_source,
+                    )
+                    evidence[candidate_id] = candidate
+
+                candidate.add(
+                    result.route,
+                    score=result.score,
+                    rank=result.rank,
                 )
-
-            evidence[candidate_id].add(
-                result.route,
-                score=result.score,
-                rank=result.rank,
-            )
-
-        # ---------------------------------------------------------
-        # 3. Address TF-IDF
-        # ---------------------------------------------------------
-
-        address_results = self.address_retriever.retrieve(
-            source1
-        )
-
-        for result in address_results:
-
-            candidate_id = result.candidate_entity_id
-
-            if candidate_id not in evidence:
-
-                evidence[candidate_id] = CandidateEvidence(
-                    source1_entity_id=source1.entity_id,
-                    candidate_entity_id=candidate_id,
-                    target_source=result.target_source,
-                )
-
-            evidence[candidate_id].add(
-                result.route,
-                score=result.score,
-                rank=result.rank,
-            )
 
         # ---------------------------------------------------------
         # FINAL SORT

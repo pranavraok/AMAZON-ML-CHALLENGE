@@ -8,3 +8,4 @@ rapidfuzz==3.14.1
 scikit-learn==1.7.1
 scipy==1.16.1
 sparse-dot-topn==1.1.5
+Unidecode==1.4.0
