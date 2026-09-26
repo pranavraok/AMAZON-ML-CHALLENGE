@@ -230,6 +230,36 @@ class EntityIdTable:
 
         self._offsets = offsets
 
+    @classmethod
+    def build_streaming(
+        cls,
+        entity_ids: Iterable[str],
+    ) -> "EntityIdTable":
+        """Build from a one-shot iterable, without a temporary list.
+
+        The sequence constructor holds every encoded id at once, which is
+        avoidable when the caller is streaming records off disk anyway.
+        """
+
+        table = cls.__new__(cls)
+
+        blob = bytearray()
+        lengths = []
+
+        for value in entity_ids:
+            encoded = value.encode("utf-8")
+            blob.extend(encoded)
+            lengths.append(len(encoded))
+
+        table._blob = bytes(blob)
+        table.count = len(lengths)
+
+        offsets = np.zeros(len(lengths) + 1, dtype=np.int64)
+        np.cumsum(lengths, out=offsets[1:])
+        table._offsets = offsets
+
+        return table
+
     def __len__(self) -> int:
         return self.count
 
@@ -307,6 +337,104 @@ class CompactBlockingIndex:
 
         if verify_no_hash_collisions:
             self._assert_no_collisions()
+
+    @classmethod
+    def from_stream(
+        cls,
+        records: Iterable,
+        *,
+        rare_token_max_postings: int = 50,
+        numeric_token_max_postings: int = 100,
+        translit_token_max_postings: int = 100,
+        address_token_max_postings: int = 50,
+        address_pair_max_postings: int = 5,
+        verify_no_hash_collisions: bool = True,
+    ) -> "CompactBlockingIndex":
+        """Build from a one-shot iterable of records.
+
+        Identical index to the sequence constructor, but the caller never
+        has to hold every record in memory at once. This is what makes the
+        full-scale target sources feasible: records can be streamed country
+        by country and released as soon as they are indexed.
+        """
+
+        self = cls.__new__(cls)
+
+        for name, value in (
+            ("rare_token_max_postings", rare_token_max_postings),
+            ("numeric_token_max_postings", numeric_token_max_postings),
+            ("translit_token_max_postings", translit_token_max_postings),
+            ("address_token_max_postings", address_token_max_postings),
+            ("address_pair_max_postings", address_pair_max_postings),
+        ):
+            if value <= 0:
+                raise ValueError(f"{name} must be positive")
+
+        self.rare_token_max_postings = rare_token_max_postings
+        self.numeric_token_max_postings = numeric_token_max_postings
+        self.translit_token_max_postings = translit_token_max_postings
+        self.address_token_max_postings = address_token_max_postings
+        self.address_pair_max_postings = address_pair_max_postings
+
+        builders = {
+            family: _FamilyBuilder(verify_no_hash_collisions)
+            for family in FAMILIES
+        }
+
+        blob = bytearray()
+        lengths = []
+
+        row_id = 0
+        validated = False
+
+        for record in records:
+
+            if not validated:
+                missing = [
+                    field
+                    for field in _REQUIRED_FIELDS
+                    if not hasattr(record, field)
+                ]
+                if missing:
+                    raise ValueError(
+                        "indexed records are missing required normalized "
+                        f"fields: {missing}. Expected objects produced by "
+                        "business_entity_resolution.normalization."
+                        "normalize_record()."
+                    )
+                validated = True
+
+            encoded = record.entity_id.encode("utf-8")
+            blob.extend(encoded)
+            lengths.append(len(encoded))
+
+            self._index_record(builders, row_id, record)
+
+            row_id += 1
+
+        if row_id == 0:
+            raise ValueError(
+                "CompactBlockingIndex requires at least one record"
+            )
+
+        table = EntityIdTable.__new__(EntityIdTable)
+        table._blob = bytes(blob)
+        table.count = row_id
+
+        offsets = np.zeros(row_id + 1, dtype=np.int64)
+        np.cumsum(lengths, out=offsets[1:])
+        table._offsets = offsets
+
+        self.entity_ids = table
+
+        self.families = {
+            family: builder.finish() for family, builder in builders.items()
+        }
+
+        if verify_no_hash_collisions:
+            self._assert_no_collisions()
+
+        return self
 
     # ==============================================================
     # BUILD

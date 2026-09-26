@@ -41,6 +41,7 @@ class CharacterTfidfRetriever:
         ngram_range: tuple[int, int] = (3, 5),
         top_k: int = 20,
         min_score: float = 0.0,
+        target_source: str | None = None,
     ) -> None:
 
         if not records:
@@ -73,7 +74,14 @@ class CharacterTfidfRetriever:
         self.top_k = top_k
         self.min_score = min_score
 
-        self.target_source = self._get_target_source()
+        # A country-partitioned build indexes one country's records at a
+        # time, so the target source is passed in rather than inferred
+        # from records[0].
+        self.target_source = (
+            target_source
+            if target_source is not None
+            else self._get_target_source()
+        )
 
         # Country-specific indexes.
         #
