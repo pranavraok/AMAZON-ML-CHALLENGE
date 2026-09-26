@@ -1,0 +1,227 @@
+{
+  "architecture": "separate",
+  "feature_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day1\\features.tsv",
+  "feature_names": [
+    "country_equal",
+    "name_unicode_exact",
+    "name_ascii_exact",
+    "address_unicode_exact",
+    "address_ascii_exact",
+    "name_token_jaccard",
+    "address_token_jaccard",
+    "address_number_jaccard",
+    "name_ratio",
+    "name_token_sort_ratio",
+    "name_token_set_ratio",
+    "address_ratio",
+    "address_token_sort_ratio",
+    "address_token_set_ratio",
+    "name_prefix_ratio",
+    "address_prefix_ratio",
+    "name_length_ratio",
+    "address_length_ratio",
+    "both_address_missing",
+    "one_address_missing",
+    "route_count",
+    "target_is_s3"
+  ],
+  "model_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\artifacts\\day2\\separate_s2_s3_350.joblib",
+  "sources": {
+    "S2": {
+      "feature_importance": [
+        {
+          "feature": "name_ratio",
+          "split_importance": 1183
+        },
+        {
+          "feature": "name_prefix_ratio",
+          "split_importance": 1092
+        },
+        {
+          "feature": "name_length_ratio",
+          "split_importance": 989
+        },
+        {
+          "feature": "name_token_sort_ratio",
+          "split_importance": 986
+        },
+        {
+          "feature": "name_token_jaccard",
+          "split_importance": 956
+        },
+        {
+          "feature": "name_token_set_ratio",
+          "split_importance": 819
+        },
+        {
+          "feature": "address_token_jaccard",
+          "split_importance": 781
+        },
+        {
+          "feature": "address_token_set_ratio",
+          "split_importance": 659
+        },
+        {
+          "feature": "address_length_ratio",
+          "split_importance": 631
+        },
+        {
+          "feature": "address_ratio",
+          "split_importance": 611
+        },
+        {
+          "feature": "address_number_jaccard",
+          "split_importance": 504
+        },
+        {
+          "feature": "address_token_sort_ratio",
+          "split_importance": 495
+        },
+        {
+          "feature": "address_prefix_ratio",
+          "split_importance": 481
+        },
+        {
+          "feature": "route_count",
+          "split_importance": 256
+        },
+        {
+          "feature": "name_ascii_exact",
+          "split_importance": 32
+        },
+        {
+          "feature": "address_unicode_exact",
+          "split_importance": 18
+        },
+        {
+          "feature": "name_unicode_exact",
+          "split_importance": 6
+        },
+        {
+          "feature": "one_address_missing",
+          "split_importance": 1
+        },
+        {
+          "feature": "address_ascii_exact",
+          "split_importance": 0
+        },
+        {
+          "feature": "both_address_missing",
+          "split_importance": 0
+        },
+        {
+          "feature": "country_equal",
+          "split_importance": 0
+        },
+        {
+          "feature": "target_is_s3",
+          "split_importance": 0
+        }
+      ],
+      "missing_feature_values": 0,
+      "training_negatives": 396084,
+      "training_positives": 66379,
+      "training_rows": 462463,
+      "validation_candidate_rows": 113900
+    },
+    "S3": {
+      "feature_importance": [
+        {
+          "feature": "name_ratio",
+          "split_importance": 1124
+        },
+        {
+          "feature": "name_prefix_ratio",
+          "split_importance": 1025
+        },
+        {
+          "feature": "name_token_jaccard",
+          "split_importance": 1022
+        },
+        {
+          "feature": "name_token_sort_ratio",
+          "split_importance": 948
+        },
+        {
+          "feature": "name_token_set_ratio",
+          "split_importance": 879
+        },
+        {
+          "feature": "name_length_ratio",
+          "split_importance": 831
+        },
+        {
+          "feature": "address_token_set_ratio",
+          "split_importance": 795
+        },
+        {
+          "feature": "address_ratio",
+          "split_importance": 735
+        },
+        {
+          "feature": "address_token_jaccard",
+          "split_importance": 677
+        },
+        {
+          "feature": "address_length_ratio",
+          "split_importance": 651
+        },
+        {
+          "feature": "address_number_jaccard",
+          "split_importance": 559
+        },
+        {
+          "feature": "address_prefix_ratio",
+          "split_importance": 485
+        },
+        {
+          "feature": "address_token_sort_ratio",
+          "split_importance": 459
+        },
+        {
+          "feature": "route_count",
+          "split_importance": 277
+        },
+        {
+          "feature": "name_ascii_exact",
+          "split_importance": 21
+        },
+        {
+          "feature": "address_unicode_exact",
+          "split_importance": 10
+        },
+        {
+          "feature": "name_unicode_exact",
+          "split_importance": 2
+        },
+        {
+          "feature": "address_ascii_exact",
+          "split_importance": 0
+        },
+        {
+          "feature": "both_address_missing",
+          "split_importance": 0
+        },
+        {
+          "feature": "country_equal",
+          "split_importance": 0
+        },
+        {
+          "feature": "one_address_missing",
+          "split_importance": 0
+        },
+        {
+          "feature": "target_is_s3",
+          "split_importance": 0
+        }
+      ],
+      "missing_feature_values": 0,
+      "training_negatives": 389251,
+      "training_positives": 71343,
+      "training_rows": 460594,
+      "validation_candidate_rows": 113160
+    }
+  },
+  "training_rows": 923057,
+  "validation_candidate_rows": 227060
+}

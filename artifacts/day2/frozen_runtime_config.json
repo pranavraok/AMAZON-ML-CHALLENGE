@@ -1,0 +1,24 @@
+{
+  "candidate_contract": "CANDIDATE_PAIR_COLUMNS in schemas.py",
+  "external_handoffs": {
+    "person2_candidate_recall_evidence": "pending",
+    "person3_feature_ablation_evidence": "pending",
+    "person4_independent_threshold_and_loco_evidence": "pending"
+  },
+  "feature_contract": "MODEL_FEATURE_COLUMNS in features.py",
+  "freeze_status": "provisional_pending_teammate_handoffs",
+  "inference_chunk_size": 100000,
+  "n_folds": 5,
+  "num_boost_rounds": 350,
+  "post_processing": {
+    "accept_if_probability_greater_than_or_equal_to_threshold": true,
+    "empty_prediction_means_singleton": true,
+    "predictions_must_be_subset_of_final_candidates": true,
+    "sort_ids_lexicographically": true
+  },
+  "seed": 2026,
+  "selected_architecture": "separate",
+  "selected_model_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\artifacts\\day2\\separate_s2_s3_350.joblib",
+  "threshold": 0.7,
+  "validation_fold": 0
+}

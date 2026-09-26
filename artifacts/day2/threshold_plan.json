@@ -1,0 +1,18 @@
+{
+  "architecture": "separate",
+  "beta": 0.5,
+  "global_threshold": 0.7,
+  "post_processing": {
+    "accept_if_probability_greater_than_or_equal_to_threshold": true,
+    "empty_prediction_means_singleton": true,
+    "predictions_must_be_subset_of_final_candidates": true,
+    "sort_ids_lexicographically": true
+  },
+  "search_grid": {
+    "maximum": 0.99,
+    "minimum": 0.05,
+    "step": 0.01
+  },
+  "selection_metric": "entity-level macro F0.5",
+  "status": "provisional_until_person4_independent_validation"
+}

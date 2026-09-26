@@ -1,0 +1,123 @@
+{
+  "feature_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day1\\features.tsv",
+  "feature_importance": [
+    {
+      "feature": "name_ratio",
+      "split_importance": 1134
+    },
+    {
+      "feature": "name_token_jaccard",
+      "split_importance": 1027
+    },
+    {
+      "feature": "name_prefix_ratio",
+      "split_importance": 968
+    },
+    {
+      "feature": "name_token_set_ratio",
+      "split_importance": 835
+    },
+    {
+      "feature": "name_token_sort_ratio",
+      "split_importance": 825
+    },
+    {
+      "feature": "name_length_ratio",
+      "split_importance": 809
+    },
+    {
+      "feature": "address_token_jaccard",
+      "split_importance": 794
+    },
+    {
+      "feature": "address_token_set_ratio",
+      "split_importance": 793
+    },
+    {
+      "feature": "address_ratio",
+      "split_importance": 664
+    },
+    {
+      "feature": "address_length_ratio",
+      "split_importance": 623
+    },
+    {
+      "feature": "address_number_jaccard",
+      "split_importance": 543
+    },
+    {
+      "feature": "address_token_sort_ratio",
+      "split_importance": 467
+    },
+    {
+      "feature": "address_prefix_ratio",
+      "split_importance": 457
+    },
+    {
+      "feature": "route_count",
+      "split_importance": 278
+    },
+    {
+      "feature": "target_is_s3",
+      "split_importance": 229
+    },
+    {
+      "feature": "name_ascii_exact",
+      "split_importance": 26
+    },
+    {
+      "feature": "address_unicode_exact",
+      "split_importance": 23
+    },
+    {
+      "feature": "name_unicode_exact",
+      "split_importance": 2
+    },
+    {
+      "feature": "one_address_missing",
+      "split_importance": 2
+    },
+    {
+      "feature": "address_ascii_exact",
+      "split_importance": 1
+    },
+    {
+      "feature": "both_address_missing",
+      "split_importance": 0
+    },
+    {
+      "feature": "country_equal",
+      "split_importance": 0
+    }
+  ],
+  "feature_names": [
+    "country_equal",
+    "name_unicode_exact",
+    "name_ascii_exact",
+    "address_unicode_exact",
+    "address_ascii_exact",
+    "name_token_jaccard",
+    "address_token_jaccard",
+    "address_number_jaccard",
+    "name_ratio",
+    "name_token_sort_ratio",
+    "name_token_set_ratio",
+    "address_ratio",
+    "address_token_sort_ratio",
+    "address_token_set_ratio",
+    "name_prefix_ratio",
+    "address_prefix_ratio",
+    "name_length_ratio",
+    "address_length_ratio",
+    "both_address_missing",
+    "one_address_missing",
+    "route_count",
+    "target_is_s3"
+  ],
+  "missing_feature_values": 0,
+  "model_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\artifacts\\day2\\pooled_350.joblib",
+  "training_negatives": 785335,
+  "training_positives": 137722,
+  "training_rows": 923057,
+  "validation_candidate_rows": 227060
+}

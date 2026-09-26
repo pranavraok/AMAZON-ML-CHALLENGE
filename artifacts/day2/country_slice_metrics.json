@@ -1,0 +1,20 @@
+{
+  "India": {
+    "entities": 3997,
+    "false_negatives": 3763,
+    "false_positives": 182,
+    "macro_f0_5": 0.851102762568375,
+    "micro_precision": 0.9820830872218941,
+    "micro_recall": 0.7261081592546764,
+    "true_positives": 9976
+  },
+  "US": {
+    "entities": 6084,
+    "false_negatives": 2284,
+    "false_positives": 209,
+    "macro_f0_5": 0.9541842017546251,
+    "micro_precision": 0.9890587373049943,
+    "micro_recall": 0.8921471407659253,
+    "true_positives": 18893
+  }
+}

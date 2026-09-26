@@ -1,0 +1,94 @@
+{
+  "development_source1_entities": 50000,
+  "feature_rows": 1150117,
+  "inference": {
+    "pooled": {
+      "chunk_size": 100000,
+      "chunks_written": 3,
+      "feature_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day1\\features.tsv",
+      "model_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\artifacts\\day2\\pooled_350.joblib",
+      "resumed": false,
+      "rows_per_second": 19836.187303150466,
+      "score_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day2\\pooled_validation_scores.tsv",
+      "scored_rows": 227060,
+      "seconds": 11.44675620016642
+    },
+    "separate": {
+      "chunk_size": 100000,
+      "chunks_written": 3,
+      "feature_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day1\\features.tsv",
+      "model_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\artifacts\\day2\\separate_s2_s3_350.joblib",
+      "resumed": false,
+      "rows_per_second": 19742.43487000788,
+      "score_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day2\\separate_validation_scores.tsv",
+      "scored_rows": 227060,
+      "seconds": 11.501114299986511
+    }
+  },
+  "input_feature_bytes": 276466472,
+  "maximum_observed_rss_mb_after_stage": 1037.2,
+  "pooled_model_bytes": 536507,
+  "pooled_score_bytes": 11627355,
+  "restartable_chunking": {
+    "checkpoint_removed_after_success": true,
+    "chunk_size": 100000,
+    "day1_probability_equivalence": {
+      "compared_rows": 227060,
+      "left_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day1\\validation_scores.tsv",
+      "max_absolute_probability_difference": 0.0,
+      "pass": true,
+      "right_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day2\\day1_model_chunked_scores.tsv"
+    },
+    "enabled": true
+  },
+  "separate_model_bytes": 1064098,
+  "separate_score_bytes": 11629343,
+  "stage_metrics": [
+    {
+      "rss_mb_after": 173.8,
+      "seconds": 0.442,
+      "stage": "load_validation_contract"
+    },
+    {
+      "rss_mb_after": 884.0,
+      "seconds": 9.271,
+      "stage": "train_pooled_model"
+    },
+    {
+      "rss_mb_after": 1011.5,
+      "seconds": 9.239,
+      "stage": "train_separate_models"
+    },
+    {
+      "rss_mb_after": 1019.7,
+      "seconds": 11.479,
+      "stage": "chunked_validation_inference_pooled"
+    },
+    {
+      "rss_mb_after": 1023.4,
+      "seconds": 4.519,
+      "stage": "threshold_search_pooled"
+    },
+    {
+      "rss_mb_after": 1025.4,
+      "seconds": 11.545,
+      "stage": "chunked_validation_inference_separate"
+    },
+    {
+      "rss_mb_after": 1028.0,
+      "seconds": 4.531,
+      "stage": "threshold_search_separate"
+    },
+    {
+      "rss_mb_after": 1028.1,
+      "seconds": 1.209,
+      "stage": "verify_chunked_inference_equivalence"
+    },
+    {
+      "rss_mb_after": 1037.2,
+      "seconds": 5.137,
+      "stage": "outputs_and_error_handoff"
+    }
+  ],
+  "validation_entities": 10081
+}

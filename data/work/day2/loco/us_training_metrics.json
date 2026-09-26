@@ -1,0 +1,123 @@
+{
+  "feature_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day2\\loco\\us_to_india\\features.tsv",
+  "feature_importance": [
+    {
+      "feature": "name_ratio",
+      "split_importance": 1172
+    },
+    {
+      "feature": "name_prefix_ratio",
+      "split_importance": 1094
+    },
+    {
+      "feature": "name_token_jaccard",
+      "split_importance": 1091
+    },
+    {
+      "feature": "name_length_ratio",
+      "split_importance": 931
+    },
+    {
+      "feature": "name_token_sort_ratio",
+      "split_importance": 828
+    },
+    {
+      "feature": "name_token_set_ratio",
+      "split_importance": 743
+    },
+    {
+      "feature": "address_token_set_ratio",
+      "split_importance": 697
+    },
+    {
+      "feature": "address_ratio",
+      "split_importance": 694
+    },
+    {
+      "feature": "address_token_sort_ratio",
+      "split_importance": 567
+    },
+    {
+      "feature": "address_token_jaccard",
+      "split_importance": 561
+    },
+    {
+      "feature": "address_length_ratio",
+      "split_importance": 542
+    },
+    {
+      "feature": "address_prefix_ratio",
+      "split_importance": 512
+    },
+    {
+      "feature": "address_number_jaccard",
+      "split_importance": 450
+    },
+    {
+      "feature": "route_count",
+      "split_importance": 285
+    },
+    {
+      "feature": "target_is_s3",
+      "split_importance": 271
+    },
+    {
+      "feature": "name_ascii_exact",
+      "split_importance": 40
+    },
+    {
+      "feature": "address_unicode_exact",
+      "split_importance": 9
+    },
+    {
+      "feature": "name_unicode_exact",
+      "split_importance": 8
+    },
+    {
+      "feature": "one_address_missing",
+      "split_importance": 5
+    },
+    {
+      "feature": "address_ascii_exact",
+      "split_importance": 0
+    },
+    {
+      "feature": "both_address_missing",
+      "split_importance": 0
+    },
+    {
+      "feature": "country_equal",
+      "split_importance": 0
+    }
+  ],
+  "feature_names": [
+    "country_equal",
+    "name_unicode_exact",
+    "name_ascii_exact",
+    "address_unicode_exact",
+    "address_ascii_exact",
+    "name_token_jaccard",
+    "address_token_jaccard",
+    "address_number_jaccard",
+    "name_ratio",
+    "name_token_sort_ratio",
+    "name_token_set_ratio",
+    "address_ratio",
+    "address_token_sort_ratio",
+    "address_token_set_ratio",
+    "name_prefix_ratio",
+    "address_prefix_ratio",
+    "name_length_ratio",
+    "address_length_ratio",
+    "both_address_missing",
+    "one_address_missing",
+    "route_count",
+    "target_is_s3"
+  ],
+  "missing_feature_values": 0,
+  "model_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day2\\loco\\us_to_india\\us_model.joblib",
+  "training_negatives": 613532,
+  "training_positives": 101682,
+  "training_rows": 715214,
+  "validation_candidate_rows": 434903
+}

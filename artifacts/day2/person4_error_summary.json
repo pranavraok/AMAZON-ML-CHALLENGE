@@ -1,0 +1,21 @@
+{
+  "counts_by_country": {
+    "India": 3945,
+    "US": 2493
+  },
+  "counts_by_error_type": {
+    "false_negative_below_threshold": 425,
+    "false_negative_candidate_miss": 5622,
+    "false_positive": 369,
+    "false_positive_singleton": 22
+  },
+  "counts_by_target_source": {
+    "S2": 3065,
+    "S3": 3373
+  },
+  "error_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day2\\person4_error_slices.tsv",
+  "error_rows": 6438,
+  "score_file": "C:\\Users\\Dell\\AMAZON-ML-CHALLENGE\\data\\work\\day2\\separate_validation_scores.tsv",
+  "threshold": 0.7,
+  "validation_entities": 10081
+}
