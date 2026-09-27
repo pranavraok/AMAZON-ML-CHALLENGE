@@ -24,6 +24,7 @@ deterministic order.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -473,6 +474,11 @@ class ChunkedTargetIndex:
         country_paths: dict[str, Path],
         target_source: str,
         config: CandidateGenerationConfig | None = None,
+        *,
+        index_dir: Path | None = None,
+        reuse_index: bool = False,
+        cache_tfidf: bool = False,
+        verify_no_hash_collisions: bool = False,
     ) -> None:
 
         if not country_paths:
@@ -486,33 +492,70 @@ class ChunkedTargetIndex:
         ordered = sorted(country_paths.items())
 
         # ---- blocking index, streamed over all countries ----
+        #
+        # A full test target source costs roughly 25 minutes of CPU to index,
+        # so the finished index is cached on disk and memory-mapped back on
+        # every later run. Nothing about the stored bytes changes a
+        # candidate; they are the same hashes, indptr and postings.
 
-        print(f"  building blocking index for {target_source}...")
-
-        started = time.perf_counter()
-
-        self.blocking_index = CompactBlockingIndex.from_stream(
-            self._all_records(ordered),
-            rare_token_max_postings=self.config.rare_token_max_postings,
-            numeric_token_max_postings=(
-                self.config.numeric_token_max_postings
-            ),
-            translit_token_max_postings=(
-                self.config.translit_token_max_postings
-            ),
-            address_token_max_postings=(
-                self.config.address_token_max_postings
-            ),
-            address_pair_max_postings=(
-                self.config.address_pair_max_postings
-            ),
+        metadata = (
+            index_dir / CompactBlockingIndex.INDEX_METADATA
+            if index_dir is not None
+            else None
+        )
+        cached = (
+            reuse_index
+            and metadata is not None
+            and metadata.is_file()
         )
 
-        print(
-            f"  blocking index: "
-            f"{len(self.blocking_index.entity_ids):,} targets in "
-            f"{time.perf_counter() - started:.1f}s"
-        )
+        if cached:
+            print(f"  reusing cached blocking index {index_dir}...")
+            started = time.perf_counter()
+            self.blocking_index = CompactBlockingIndex.load(
+                index_dir, mmap_mode="r"
+            )
+            print(
+                f"  mapped blocking index: "
+                f"{len(self.blocking_index.entity_ids):,} targets in "
+                f"{time.perf_counter() - started:.1f}s"
+            )
+        else:
+            print(f"  building blocking index for {target_source}...")
+
+            started = time.perf_counter()
+
+            self.blocking_index = CompactBlockingIndex.from_stream(
+                self._all_records(ordered),
+                rare_token_max_postings=self.config.rare_token_max_postings,
+                numeric_token_max_postings=(
+                    self.config.numeric_token_max_postings
+                ),
+                translit_token_max_postings=(
+                    self.config.translit_token_max_postings
+                ),
+                address_token_max_postings=(
+                    self.config.address_token_max_postings
+                ),
+                address_pair_max_postings=(
+                    self.config.address_pair_max_postings
+                ),
+                verify_no_hash_collisions=verify_no_hash_collisions,
+            )
+
+            print(
+                f"  blocking index: "
+                f"{len(self.blocking_index.entity_ids):,} targets in "
+                f"{time.perf_counter() - started:.1f}s"
+            )
+
+            if index_dir is not None:
+                started = time.perf_counter()
+                self.blocking_index.save(index_dir)
+                print(
+                    f"  cached blocking index to {index_dir} in "
+                    f"{time.perf_counter() - started:.1f}s"
+                )
 
         # ---- TF-IDF retrievers, one country at a time ----
 
@@ -526,26 +569,117 @@ class ChunkedTargetIndex:
             if not records:
                 continue
 
-            self.name_retrievers[country] = CharacterTfidfRetriever(
-                records,
-                field="name",
-                ngram_range=self.config.ngram_range,
-                top_k=self.config.name_top_k,
-                min_score=self.config.name_min_score,
-                target_source=target_source,
-            )
-
-            self.address_retrievers[country] = CharacterTfidfRetriever(
-                records,
-                field="address",
-                ngram_range=self.config.ngram_range,
-                top_k=self.config.address_top_k,
-                min_score=self.config.address_min_score,
-                target_source=target_source,
-            )
+            for field, retrievers, top_k, min_score in (
+                (
+                    "name",
+                    self.name_retrievers,
+                    self.config.name_top_k,
+                    self.config.name_min_score,
+                ),
+                (
+                    "address",
+                    self.address_retrievers,
+                    self.config.address_top_k,
+                    self.config.address_min_score,
+                ),
+            ):
+                retrievers[country] = self._retriever(
+                    field,
+                    records,
+                    top_k,
+                    min_score,
+                    country,
+                    path,
+                    index_dir if cache_tfidf else None,
+                )
 
             # The retrievers keep entity ids and transposed matrices only.
             del records
+
+    def _retriever(
+        self,
+        field: str,
+        records: list,
+        top_k: int,
+        min_score: float,
+        country: str,
+        path: Path,
+        cache_dir: Path | None,
+    ) -> CharacterTfidfRetriever:
+        """Build one TF-IDF retriever, reusing a cached one when possible.
+
+        The cache key covers the fitted parameters and the size of the
+        country partition, so a config change or different input data
+        rebuilds instead of silently reusing a stale matrix.
+        """
+
+        if cache_dir is None:
+            return CharacterTfidfRetriever(
+                records,
+                field=field,
+                ngram_range=self.config.ngram_range,
+                top_k=top_k,
+                min_score=min_score,
+                target_source=self.target_source,
+            )
+
+        import pickle
+
+        key = "|".join(
+            str(part)
+            for part in (
+                self.target_source,
+                country,
+                field,
+                self.config.ngram_range,
+                top_k,
+                min_score,
+                path.stat().st_size,
+            )
+        )
+        fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+        cache_file = cache_dir / f"tfidf_{fingerprint}.pkl"
+
+        if cache_file.is_file():
+            try:
+                with open(cache_file, "rb") as handle:
+                    retriever = pickle.load(handle)
+                print(
+                    f"  reusing cached {field} tfidf for "
+                    f"{country} ({cache_file.name})"
+                )
+                return retriever
+            except Exception as error:  # noqa: BLE001
+                print(
+                    f"  ignoring unusable {field} tfidf cache "
+                    f"{cache_file.name}: {error}"
+                )
+
+        started = time.perf_counter()
+        retriever = CharacterTfidfRetriever(
+            records,
+            field=field,
+            ngram_range=self.config.ngram_range,
+            top_k=top_k,
+            min_score=min_score,
+            target_source=self.target_source,
+        )
+        print(
+            f"  {field} tfidf for {country}: {len(records):,} records in "
+            f"{time.perf_counter() - started:.1f}s"
+        )
+
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        temporary = cache_file.with_suffix(".pkl.tmp")
+        try:
+            with open(temporary, "wb") as handle:
+                pickle.dump(retriever, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(temporary, cache_file)
+        except Exception as error:  # noqa: BLE001
+            print(f"  could not cache {field} tfidf: {error}")
+            temporary.unlink(missing_ok=True)
+
+        return retriever
 
     @staticmethod
     def _all_records(ordered: Sequence[tuple[str, Path]]) -> Iterator:
@@ -643,6 +777,9 @@ def run_chunked(
     config: CandidateGenerationConfig | None = None,
     limit: int | None = None,
     progress_every: int = 1,
+    index_dir: Path | None = None,
+    reuse_index: bool = False,
+    cache_tfidf: bool = False,
 ) -> Manifest:
     """Generate and persist every chunk for one target source."""
 
@@ -671,7 +808,12 @@ def run_chunked(
     if len(done) < total_chunks:
         print(f"  building target index for {target_source}...")
         index = ChunkedTargetIndex(
-            country_paths, target_source, config=config
+            country_paths,
+            target_source,
+            config=config,
+            index_dir=index_dir,
+            reuse_index=reuse_index,
+            cache_tfidf=cache_tfidf,
         )
     else:
         index = None
@@ -696,7 +838,12 @@ def run_chunked(
 
         if index is None:
             index = ChunkedTargetIndex(
-                country_paths, target_source, config=config
+                country_paths,
+                target_source,
+                config=config,
+                index_dir=index_dir,
+                reuse_index=reuse_index,
+                cache_tfidf=cache_tfidf,
             )
 
         relative = Path(f"chunk_{chunk_index:06d}.tsv")

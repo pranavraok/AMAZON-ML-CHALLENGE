@@ -1,0 +1,503 @@
+{
+  "report": "day3_candidate_reduction_results",
+  "person": "Person 2 - candidate generation",
+  "day": 3,
+  "generated_by": "scripts/day3_aggregate_reduction.py",
+  "reproduce": "python scripts/day3_measure_config.py --config <name> --output data/work/day3/configs/<name>.json   (one at a time) && python scripts/day3_aggregate_reduction.py",
+  "evaluation_data": {
+    "directory": "data/dev/train",
+    "note": "development subset with ground truth; the test set has no labels and was never used for recall",
+    "s1_count": 50000,
+    "s2_target_count": 183231,
+    "s3_target_count": 189407
+  },
+  "frozen_route_set_unchanged": true,
+  "brief_baseline": {
+    "candidate_pairs": 17756227,
+    "average_candidates_per_s1": 355.12,
+    "pair_recall": 0.996281,
+    "full_entity_recall": 0.9886
+  },
+  "measured_baseline": {
+    "total_candidate_pairs": 17762767,
+    "average_candidates_per_s1": 355.25534,
+    "pair_recall": 0.9962928208158112,
+    "full_entity_recall": 0.98864
+  },
+  "measured_vs_brief_baseline": {
+    "candidate_pair_delta": 6540,
+    "candidate_pair_delta_pct": 0.03683214908212218,
+    "pair_recall_delta_pp": 0.0011820815811192098,
+    "full_entity_recall_delta_pp": 0.003999999999992898,
+    "note": "the re-measured baseline on the frozen code is within 0.04% of the integrated baseline quoted in the brief; the difference is a re-measurement of the same frozen route set, not a route change"
+  },
+  "acceptance_rule": {
+    "max_pair_recall_drop_pp": 0.02,
+    "max_full_entity_recall_drop_pp": 0.05,
+    "min_candidate_reduction": 0.1,
+    "rationale": "a candidate reduction is only worth a downstream recall loss if the loss is negligible; counting candidates alone is not evidence"
+  },
+  "configurations": [
+    {
+      "configuration": "A_baseline",
+      "label": "A. Baseline (frozen Day-2 configuration)",
+      "derivation_rule": "frozen CandidateGenerationConfig() defaults, unchanged",
+      "parameters": {
+        "name_top_k": 100,
+        "name_min_score": 0.3,
+        "address_top_k": 100,
+        "address_min_score": 0.15,
+        "rare_token_max_postings": 50,
+        "numeric_token_max_postings": 100,
+        "translit_token_max_postings": 100,
+        "address_token_max_postings": 50,
+        "address_pair_max_postings": 5,
+        "ngram_range": [
+          3,
+          5
+        ]
+      },
+      "parameters_changed_from_baseline": {},
+      "routes_changed": [],
+      "route_semantics_changed": false,
+      "blocking_backend": "compact",
+      "s1_count": 50000,
+      "candidate_row_count": 50000,
+      "total_candidate_pairs": 17762767,
+      "average_candidates_per_s1": 355.25534,
+      "median_candidates_per_s1": 368.0,
+      "p95_candidates_per_s1": 515.0,
+      "p99_candidates_per_s1": 585.0,
+      "maximum_candidates_per_s1": 1150,
+      "total_true_pairs": 172638,
+      "retrieved_true_pairs": 171998,
+      "missed_true_pairs": 640,
+      "pair_recall": 0.9962928208158112,
+      "full_entity_recall": 0.98864,
+      "entities_with_all_links_retrieved": 49432,
+      "total_wall_seconds": 1456.056706400006,
+      "candidate_generation_seconds": 1178.844696900007,
+      "index_build_seconds": 227.14253749999625,
+      "peak_rss_gb": 2.5337753295898438,
+      "route_contribution": {
+        "candidate_pairs": {
+          "rare_name_tokens": 1334390,
+          "address_tokens": 206944,
+          "address_token_pair": 896664,
+          "numeric_address": 1838827,
+          "name_tfidf": 6430769,
+          "address_tfidf": 8631950,
+          "token_sorted_name": 66864,
+          "exact_name": 55291,
+          "transliterated_exact_name": 64183,
+          "exact_address": 14217,
+          "transliterated_token": 410345,
+          "exact_combined": 2203
+        },
+        "s1_entities_touched": {
+          "address_token_pair": 49906,
+          "address_tokens": 34297,
+          "name_tfidf": 49989,
+          "transliterated_exact_name": 31357,
+          "token_sorted_name": 32563,
+          "numeric_address": 31250,
+          "rare_name_tokens": 31589,
+          "address_tfidf": 49999,
+          "exact_name": 28507,
+          "exact_address": 11074,
+          "transliterated_token": 23370,
+          "exact_combined": 2078
+        }
+      },
+      "pair_reduction_vs_baseline": 0.0,
+      "pair_recall_drop_pp": 0.0,
+      "full_entity_recall_drop_pp": 0.0,
+      "extra_missed_true_pairs": 0,
+      "entities_losing_all_links": 0
+    },
+    {
+      "configuration": "B_name_top_k_50",
+      "label": "B. Reduced name retrieval top-K (100 -> 50)",
+      "derivation_rule": "halve name_top_k",
+      "parameters": {
+        "name_top_k": 50,
+        "name_min_score": 0.3,
+        "address_top_k": 100,
+        "address_min_score": 0.15,
+        "rare_token_max_postings": 50,
+        "numeric_token_max_postings": 100,
+        "translit_token_max_postings": 100,
+        "address_token_max_postings": 50,
+        "address_pair_max_postings": 5,
+        "ngram_range": [
+          3,
+          5
+        ]
+      },
+      "parameters_changed_from_baseline": {
+        "name_top_k": {
+          "baseline": 100,
+          "candidate": 50
+        }
+      },
+      "routes_changed": [],
+      "route_semantics_changed": false,
+      "blocking_backend": "compact",
+      "s1_count": 50000,
+      "candidate_row_count": 50000,
+      "total_candidate_pairs": 15195931,
+      "average_candidates_per_s1": 303.91862,
+      "median_candidates_per_s1": 306.0,
+      "p95_candidates_per_s1": 441.0,
+      "p99_candidates_per_s1": 504.0,
+      "maximum_candidates_per_s1": 1051,
+      "total_true_pairs": 172638,
+      "retrieved_true_pairs": 171916,
+      "missed_true_pairs": 722,
+      "pair_recall": 0.9958178384828369,
+      "full_entity_recall": 0.9871,
+      "entities_with_all_links_retrieved": 49355,
+      "total_wall_seconds": 1423.8847556999972,
+      "candidate_generation_seconds": 1147.2085231000092,
+      "index_build_seconds": 226.86626029999752,
+      "peak_rss_gb": 2.4328155517578125,
+      "route_contribution": {
+        "candidate_pairs": {
+          "rare_name_tokens": 1334390,
+          "address_tokens": 206944,
+          "address_token_pair": 896664,
+          "numeric_address": 1838827,
+          "name_tfidf": 3815876,
+          "address_tfidf": 8631950,
+          "token_sorted_name": 66864,
+          "exact_name": 55291,
+          "transliterated_exact_name": 64183,
+          "exact_address": 14217,
+          "transliterated_token": 410345,
+          "exact_combined": 2203
+        },
+        "s1_entities_touched": {
+          "name_tfidf": 49989,
+          "token_sorted_name": 32563,
+          "address_tfidf": 49999,
+          "address_token_pair": 49906,
+          "numeric_address": 31250,
+          "address_tokens": 34297,
+          "transliterated_exact_name": 31357,
+          "rare_name_tokens": 31589,
+          "exact_name": 28507,
+          "exact_address": 11074,
+          "transliterated_token": 23370,
+          "exact_combined": 2078
+        }
+      },
+      "pair_reduction_vs_baseline": 0.144506540000215,
+      "pair_recall_drop_pp": 0.047498233297427195,
+      "full_entity_recall_drop_pp": 0.15399999999999858,
+      "extra_missed_true_pairs": 82,
+      "entities_losing_all_links": 77
+    },
+    {
+      "configuration": "C_address_top_k_50",
+      "label": "C. Reduced address retrieval top-K (100 -> 50)",
+      "derivation_rule": "halve address_top_k",
+      "parameters": {
+        "name_top_k": 100,
+        "name_min_score": 0.3,
+        "address_top_k": 50,
+        "address_min_score": 0.15,
+        "rare_token_max_postings": 50,
+        "numeric_token_max_postings": 100,
+        "translit_token_max_postings": 100,
+        "address_token_max_postings": 50,
+        "address_pair_max_postings": 5,
+        "ngram_range": [
+          3,
+          5
+        ]
+      },
+      "parameters_changed_from_baseline": {
+        "address_top_k": {
+          "baseline": 100,
+          "candidate": 50
+        }
+      },
+      "routes_changed": [],
+      "route_semantics_changed": false,
+      "blocking_backend": "compact",
+      "s1_count": 50000,
+      "candidate_row_count": 50000,
+      "total_candidate_pairs": 13933016,
+      "average_candidates_per_s1": 278.66032,
+      "median_candidates_per_s1": 299.0,
+      "p95_candidates_per_s1": 427.0,
+      "p99_candidates_per_s1": 493.0,
+      "maximum_candidates_per_s1": 1104,
+      "total_true_pairs": 172638,
+      "retrieved_true_pairs": 171877,
+      "missed_true_pairs": 761,
+      "pair_recall": 0.9955919322513004,
+      "full_entity_recall": 0.98686,
+      "entities_with_all_links_retrieved": 49343,
+      "total_wall_seconds": 784.0426114000002,
+      "candidate_generation_seconds": 644.3831505000126,
+      "index_build_seconds": 111.34531279999646,
+      "peak_rss_gb": 2.38104248046875,
+      "route_contribution": {
+        "candidate_pairs": {
+          "rare_name_tokens": 1334390,
+          "address_tokens": 206944,
+          "address_token_pair": 896664,
+          "numeric_address": 1838827,
+          "name_tfidf": 6430769,
+          "address_tfidf": 4736392,
+          "token_sorted_name": 66864,
+          "exact_name": 55291,
+          "transliterated_exact_name": 64183,
+          "exact_address": 14217,
+          "transliterated_token": 410345,
+          "exact_combined": 2203
+        },
+        "s1_entities_touched": {
+          "address_tokens": 34297,
+          "token_sorted_name": 32563,
+          "transliterated_exact_name": 31357,
+          "address_token_pair": 49906,
+          "exact_name": 28507,
+          "address_tfidf": 49999,
+          "rare_name_tokens": 31589,
+          "numeric_address": 31250,
+          "name_tfidf": 49989,
+          "exact_address": 11074,
+          "transliterated_token": 23370,
+          "exact_combined": 2078
+        }
+      },
+      "pair_reduction_vs_baseline": 0.2156055416366155,
+      "pair_recall_drop_pp": 0.07008885645107821,
+      "full_entity_recall_drop_pp": 0.17800000000000038,
+      "extra_missed_true_pairs": 121,
+      "entities_losing_all_links": 89
+    },
+    {
+      "configuration": "D_posting_caps_x0.6",
+      "label": "D. Reduced posting caps (x0.6)",
+      "derivation_rule": "multiply every posting cap by 0.6, floor 1",
+      "parameters": {
+        "name_top_k": 100,
+        "name_min_score": 0.3,
+        "address_top_k": 100,
+        "address_min_score": 0.15,
+        "rare_token_max_postings": 30,
+        "numeric_token_max_postings": 60,
+        "translit_token_max_postings": 60,
+        "address_token_max_postings": 30,
+        "address_pair_max_postings": 3,
+        "ngram_range": [
+          3,
+          5
+        ]
+      },
+      "parameters_changed_from_baseline": {
+        "rare_token_max_postings": {
+          "baseline": 50,
+          "candidate": 30
+        },
+        "numeric_token_max_postings": {
+          "baseline": 100,
+          "candidate": 60
+        },
+        "translit_token_max_postings": {
+          "baseline": 100,
+          "candidate": 60
+        },
+        "address_token_max_postings": {
+          "baseline": 50,
+          "candidate": 30
+        },
+        "address_pair_max_postings": {
+          "baseline": 5,
+          "candidate": 3
+        }
+      },
+      "routes_changed": [],
+      "route_semantics_changed": false,
+      "blocking_backend": "compact",
+      "s1_count": 50000,
+      "candidate_row_count": 50000,
+      "total_candidate_pairs": 16416139,
+      "average_candidates_per_s1": 328.32278,
+      "median_candidates_per_s1": 335.0,
+      "p95_candidates_per_s1": 457.0,
+      "p99_candidates_per_s1": 500.0,
+      "maximum_candidates_per_s1": 775,
+      "total_true_pairs": 172638,
+      "retrieved_true_pairs": 171943,
+      "missed_true_pairs": 695,
+      "pair_recall": 0.9959742351046699,
+      "full_entity_recall": 0.9877,
+      "entities_with_all_links_retrieved": 49385,
+      "total_wall_seconds": 1154.5818043000036,
+      "candidate_generation_seconds": 983.1671629000048,
+      "index_build_seconds": 136.35770029999549,
+      "peak_rss_gb": 2.4843368530273438,
+      "route_contribution": {
+        "candidate_pairs": {
+          "rare_name_tokens": 669708,
+          "address_tokens": 125573,
+          "address_token_pair": 508410,
+          "numeric_address": 1030224,
+          "name_tfidf": 6430769,
+          "address_tfidf": 8631950,
+          "token_sorted_name": 66864,
+          "exact_name": 55291,
+          "transliterated_exact_name": 64183,
+          "exact_address": 14217,
+          "transliterated_token": 290885,
+          "exact_combined": 2203
+        },
+        "s1_entities_touched": {
+          "address_tfidf": 49999,
+          "exact_name": 28507,
+          "name_tfidf": 49989,
+          "token_sorted_name": 32563,
+          "address_tokens": 27968,
+          "rare_name_tokens": 28752,
+          "address_token_pair": 49796,
+          "numeric_address": 27284,
+          "transliterated_exact_name": 31357,
+          "exact_address": 11074,
+          "transliterated_token": 20550,
+          "exact_combined": 2078
+        }
+      },
+      "pair_reduction_vs_baseline": 0.07581183719856255,
+      "pair_recall_drop_pp": 0.031858571114129486,
+      "full_entity_recall_drop_pp": 0.09399999999999409,
+      "extra_missed_true_pairs": 55,
+      "entities_losing_all_links": 47
+    },
+    {
+      "configuration": "E_combined_conservative",
+      "label": "E. Combined conservative reduction (caps x0.8, both top-K x0.75)",
+      "derivation_rule": "posting caps x0.8; name_top_k and address_top_k x0.75",
+      "parameters": {
+        "name_top_k": 75,
+        "name_min_score": 0.3,
+        "address_top_k": 75,
+        "address_min_score": 0.15,
+        "rare_token_max_postings": 40,
+        "numeric_token_max_postings": 80,
+        "translit_token_max_postings": 80,
+        "address_token_max_postings": 40,
+        "address_pair_max_postings": 4,
+        "ngram_range": [
+          3,
+          5
+        ]
+      },
+      "parameters_changed_from_baseline": {
+        "name_top_k": {
+          "baseline": 100,
+          "candidate": 75
+        },
+        "address_top_k": {
+          "baseline": 100,
+          "candidate": 75
+        },
+        "rare_token_max_postings": {
+          "baseline": 50,
+          "candidate": 40
+        },
+        "numeric_token_max_postings": {
+          "baseline": 100,
+          "candidate": 80
+        },
+        "translit_token_max_postings": {
+          "baseline": 100,
+          "candidate": 80
+        },
+        "address_token_max_postings": {
+          "baseline": 50,
+          "candidate": 40
+        },
+        "address_pair_max_postings": {
+          "baseline": 5,
+          "candidate": 4
+        }
+      },
+      "routes_changed": [],
+      "route_semantics_changed": false,
+      "blocking_backend": "compact",
+      "s1_count": 50000,
+      "candidate_row_count": 50000,
+      "total_candidate_pairs": 14045238,
+      "average_candidates_per_s1": 280.90476,
+      "median_candidates_per_s1": 297.0,
+      "p95_candidates_per_s1": 396.0,
+      "p99_candidates_per_s1": 448.0,
+      "maximum_candidates_per_s1": 784,
+      "total_true_pairs": 172638,
+      "retrieved_true_pairs": 171891,
+      "missed_true_pairs": 747,
+      "pair_recall": 0.9956730267959545,
+      "full_entity_recall": 0.9868,
+      "entities_with_all_links_retrieved": 49340,
+      "total_wall_seconds": 893.8431894999958,
+      "candidate_generation_seconds": 677.8414584999991,
+      "index_build_seconds": 158.08909100000164,
+      "peak_rss_gb": 2.3855628967285156,
+      "route_contribution": {
+        "candidate_pairs": {
+          "rare_name_tokens": 1088914,
+          "address_tokens": 165452,
+          "address_token_pair": 701491,
+          "numeric_address": 1404623,
+          "name_tfidf": 5197439,
+          "address_tfidf": 6792543,
+          "token_sorted_name": 66864,
+          "exact_name": 55291,
+          "transliterated_exact_name": 64183,
+          "exact_address": 14217,
+          "transliterated_token": 344340,
+          "exact_combined": 2203
+        },
+        "s1_entities_touched": {
+          "exact_name": 28507,
+          "token_sorted_name": 32563,
+          "address_tokens": 31649,
+          "numeric_address": 29429,
+          "address_tfidf": 49999,
+          "address_token_pair": 49872,
+          "transliterated_exact_name": 31357,
+          "rare_name_tokens": 30906,
+          "name_tfidf": 49989,
+          "exact_address": 11074,
+          "transliterated_token": 21929,
+          "exact_combined": 2078
+        }
+      },
+      "pair_reduction_vs_baseline": 0.20928771964412973,
+      "pair_recall_drop_pp": 0.06197940198566787,
+      "full_entity_recall_drop_pp": 0.18399999999999528,
+      "extra_missed_true_pairs": 107,
+      "entities_losing_all_links": 92
+    }
+  ],
+  "recommendation": {
+    "decision": "keep_baseline",
+    "configuration": "A_baseline",
+    "statement": "Keep baseline configuration.",
+    "reasoning": "no tested reduction keeps pair recall within 0.02 pp and full-entity recall within 0.05 pp of the baseline while removing at least 10% of the candidates; the cheapest reductions are the smallest savings and the aggressive ones cost real recall, so the frozen baseline stands"
+  },
+  "fallback_if_baseline_infeasible": {
+    "purpose": "documented fallback only; adopted if the full-test runtime estimate makes the baseline infeasible on the available machine",
+    "trigger": "projected single-machine full-test runtime exceeds the available compute window",
+    "order_of_preference": [
+      "D_posting_caps_x0.6",
+      "B_name_top_k_50",
+      "E_combined_conservative",
+      "C_address_top_k_50"
+    ]
+  }
+}

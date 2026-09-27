@@ -72,6 +72,32 @@ def main() -> None:
         help="Reuse an existing country partition.",
     )
     parser.add_argument(
+        "--index-cache-dir",
+        default=None,
+        help=(
+            "Directory holding the persisted target index. The index is "
+            "written there after the first build and reused afterwards, so "
+            "a re-run or a resumed run does not rebuild it."
+        ),
+    )
+    parser.add_argument(
+        "--reuse-index",
+        action="store_true",
+        help=(
+            "Load the target index from --index-cache-dir when it is "
+            "already there instead of rebuilding it."
+        ),
+    )
+    parser.add_argument(
+        "--cache-tfidf",
+        action="store_true",
+        help=(
+            "Also cache the per-country TF-IDF retrievers under "
+            "--index-cache-dir. Saves the vectoriser build on re-runs at "
+            "the cost of disk space."
+        ),
+    )
+    parser.add_argument(
         "--finalize-only",
         action="store_true",
         help="Merge existing chunk outputs without generating.",
@@ -155,6 +181,13 @@ def main() -> None:
                 work_dir,
                 chunk_size=args.chunk_size,
                 limit=args.limit,
+                index_dir=(
+                    Path(args.index_cache_dir) / name
+                    if args.index_cache_dir
+                    else None
+                ),
+                reuse_index=args.reuse_index,
+                cache_tfidf=args.cache_tfidf,
             )
         )
         work_dirs.append(work_dir)

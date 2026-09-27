@@ -37,6 +37,7 @@ Route names, posting caps, candidate ordering semantics and the
 from __future__ import annotations
 
 import hashlib
+from array import array
 from typing import Dict, Iterable, List, Sequence
 
 import numpy as np
@@ -159,20 +160,86 @@ class CompactFamily:
 
 
 class _FamilyBuilder:
+    """Accumulates one family's postings before they become a CSR family.
+
+    The accumulators are typed buffers rather than Python lists. A Python
+    list costs an 8-byte pointer plus a 28-byte ``int`` object for every
+    posting, so a full-scale test target source needed roughly 10 GB per
+    family set just to hold the build, which exhausted the 23.7 GB machine
+    during Day 3 measurement. ``array('Q')`` and ``array('i')`` hold exactly
+    the same values in 12 bytes per posting, and ``np.frombuffer`` wraps them
+    without copying.
+
+    ``keys`` backs the hash-collision assertion, which needs the *distinct*
+    raw keys. That set is capped: on a build too large to track, the family
+    is marked unverified (``distinct_keys = -1``) and the assertion is
+    skipped rather than the run being lost to memory pressure. A 64-bit hash
+    collision merges two posting lists and therefore only ever *adds*
+    candidates, so skipping the check cannot cost recall.
+    """
 
     __slots__ = ("hashes", "rows", "keys")
 
+    # 2M distinct keys per family is ~240 MB of set overhead, which is
+    # affordable and covers the whole development subset.
+    MAX_TRACKED_KEYS = 2_000_000
+
     def __init__(self, track_keys: bool) -> None:
-        self.hashes: List[int] = []
-        self.rows: List[int] = []
+        self.hashes = array("Q")
+        self.rows = array("i")
         self.keys: set[bytes] | None = set() if track_keys else None
+
+    def add_key(self, row_id: int, *parts: str) -> None:
+        """Append one posting for a composite key.
+
+        The key bytes are built once and reused for both the hash and the
+        optional collision-tracking set, and the raw bytes are only built at
+        all when the set is still wanted. ``blake2b(raw, digest_size=8)`` is
+        by construction identical to feeding the same separator-joined bytes
+        to :func:`key_hash`, so every key value is unchanged.
+        """
+
+        keys = self.keys
+        tracked = keys is not None and len(keys) < self.MAX_TRACKED_KEYS
+
+        if tracked:
+            raw = _raw_key(*parts)
+        else:
+            # Past the cap the set is abandoned, so stop building the bytes.
+            if keys is not None:
+                self.keys = None
+            raw = _KEY_SEP.join(
+                part.encode("utf-8") for part in parts
+            )
+
+        value = int.from_bytes(
+            hashlib.blake2b(raw, digest_size=8).digest(),
+            "little",
+            signed=False,
+        )
+
+        self.hashes.append(value)
+        self.rows.append(row_id)
+
+        if tracked:
+            keys.add(raw)
 
     def add(self, value: int, row_id: int, raw_key: bytes | None) -> None:
         self.hashes.append(value)
         self.rows.append(row_id)
 
         if self.keys is not None and raw_key is not None:
-            self.keys.add(raw_key)
+            if len(self.keys) < self.MAX_TRACKED_KEYS:
+                self.keys.add(raw_key)
+            else:
+                self.keys = None
+
+    def release(self) -> None:
+        """Drop the build buffers once the family has been materialised."""
+
+        self.hashes = array("Q")
+        self.rows = array("i")
+        self.keys = None
 
     def finish(self) -> CompactFamily:
         if not self.hashes:
@@ -183,8 +250,9 @@ class _FamilyBuilder:
                 0,
             )
 
-        values = np.asarray(self.hashes, dtype=np.uint64)
-        rows = np.asarray(self.rows, dtype=np.int32)
+        # Zero-copy views: np.frombuffer keeps the array object alive.
+        values = np.frombuffer(self.hashes, dtype=np.uint64)
+        rows = np.frombuffer(self.rows, dtype=np.int32)
 
         # Stable sort keeps insertion order inside a posting list, matching
         # the order the Day 2 index appended to its Python lists.
@@ -212,6 +280,23 @@ class _FamilyBuilder:
 
 def _raw_key(*parts: str) -> bytes:
     return _KEY_SEP.join(part.encode("utf-8") for part in parts)
+
+
+def _finish_families(builders: Dict[str, _FamilyBuilder]) -> dict:
+    """Materialise every family, releasing each build buffer as it lands.
+
+    Holding all ten build buffers while the last family is sorted was the
+    peak of a full-scale build; freeing them one at a time keeps only the
+    family being materialised plus the remaining buffers.
+    """
+
+    families = {}
+
+    for family, builder in builders.items():
+        families[family] = builder.finish()
+        builder.release()
+
+    return families
 
 
 class EntityIdTable:
@@ -331,9 +416,7 @@ class CompactBlockingIndex:
         for row_id, record in enumerate(records):
             self._index_record(builders, row_id, record)
 
-        self.families = {
-            family: builder.finish() for family, builder in builders.items()
-        }
+        self.families = _finish_families(builders)
 
         if verify_no_hash_collisions:
             self._assert_no_collisions()
@@ -427,9 +510,7 @@ class CompactBlockingIndex:
 
         self.entity_ids = table
 
-        self.families = {
-            family: builder.finish() for family, builder in builders.items()
-        }
+        self.families = _finish_families(builders)
 
         if verify_no_hash_collisions:
             self._assert_no_collisions()
@@ -452,69 +533,48 @@ class CompactBlockingIndex:
         token_name = record.name_token_sorted
         address = record.address_unicode
 
-        add = builders[F_NAME].add
         if name:
-            add(key_hash(country, name), row_id, _raw_key(country, name))
+            builders[F_NAME].add_key(row_id, country, name)
 
         if token_name:
-            add = builders[F_TOKEN_NAME].add
-            add(
-                key_hash(country, token_name),
-                row_id,
-                _raw_key(country, token_name),
-            )
+            builders[F_TOKEN_NAME].add_key(row_id, country, token_name)
 
         if address:
-            add = builders[F_ADDRESS].add
-            add(key_hash(country, address), row_id, _raw_key(country, address))
+            builders[F_ADDRESS].add_key(row_id, country, address)
 
         # A combined key needs real evidence on both sides.
         if name and address:
-            add = builders[F_COMBINED].add
-            add(
-                key_hash(country, name, address),
-                row_id,
-                _raw_key(country, name, address),
+            builders[F_COMBINED].add_key(
+                row_id, country, name, address
             )
 
         # Per-occurrence appends: duplicates are load-bearing for the caps.
-        add = builders[F_NAME_TOKEN].add
+        add_key = builders[F_NAME_TOKEN].add_key
         for token in _tokens(name):
-            add(key_hash(country, token), row_id, _raw_key(country, token))
+            add_key(row_id, country, token)
 
-        add = builders[F_ADDRESS_TOKEN].add
+        add_key = builders[F_ADDRESS_TOKEN].add_key
         for token in _tokens(address):
-            add(key_hash(country, token), row_id, _raw_key(country, token))
+            add_key(row_id, country, token)
 
-        add = builders[F_ADDRESS_PAIR].add
+        add_key = builders[F_ADDRESS_PAIR].add_key
         for first, second in _address_pair_keys(address):
-            add(
-                key_hash(country, first, second),
-                row_id,
-                _raw_key(country, first, second),
-            )
+            add_key(row_id, country, first, second)
 
-        add = builders[F_NUMERIC_ADDRESS].add
+        add_key = builders[F_NUMERIC_ADDRESS].add_key
         for token in _numeric_tokens(address):
-            add(key_hash(country, token), row_id, _raw_key(country, token))
+            add_key(row_id, country, token)
 
         translit = _transliterate(name)
 
         if translit:
-            add = builders[F_TRANSLIT_NAME].add
-            add(
-                key_hash(country, translit),
-                row_id,
-                _raw_key(country, translit),
+            builders[F_TRANSLIT_NAME].add_key(
+                row_id, country, translit
             )
 
-            add = builders[F_TRANSLIT_TOKEN].add
+            add_key = builders[F_TRANSLIT_TOKEN].add_key
             for token in _tokens(translit):
-                add(
-                    key_hash(country, token),
-                    row_id,
-                    _raw_key(country, token),
-                )
+                add_key(row_id, country, token)
 
     def _assert_no_collisions(self) -> None:
         """Fail loudly if two distinct keys hashed to the same 64-bit value.
@@ -535,6 +595,132 @@ class CompactBlockingIndex:
                     f"{built.distinct_keys} distinct keys produced "
                     f"{observed} distinct hashes"
                 )
+
+    # ==============================================================
+    # PERSISTENCE
+    # ==============================================================
+    #
+    # Building a full test target source costs ~25 minutes of CPU, so the
+    # index is written to disk once and memory-mapped back on every later
+    # run. Nothing in the format changes the candidate set: the same hashes,
+    # indptr, postings and entity-id bytes are stored verbatim.
+
+    INDEX_FORMAT = 1
+    INDEX_METADATA = "index.json"
+
+    def save(self, directory) -> dict:
+        """Write the index to ``directory``; return the metadata written."""
+
+        import json
+        from pathlib import Path
+
+        destination = Path(directory)
+        destination.mkdir(parents=True, exist_ok=True)
+
+        for family, built in self.families.items():
+            np.save(destination / f"{family}_hashes.npy", built.hashes)
+            np.save(destination / f"{family}_indptr.npy", built.indptr)
+            np.save(destination / f"{family}_postings.npy", built.postings)
+
+        (destination / "entity_blob.bin").write_bytes(self.entity_ids._blob)
+        np.save(
+            destination / "entity_offsets.npy", self.entity_ids._offsets
+        )
+
+        metadata = {
+            "format": self.INDEX_FORMAT,
+            "entity_count": int(self.entity_ids.count),
+            "families": sorted(self.families),
+            "caps": {
+                "rare_token_max_postings": self.rare_token_max_postings,
+                "numeric_token_max_postings": (
+                    self.numeric_token_max_postings
+                ),
+                "translit_token_max_postings": (
+                    self.translit_token_max_postings
+                ),
+                "address_token_max_postings": (
+                    self.address_token_max_postings
+                ),
+                "address_pair_max_postings": (
+                    self.address_pair_max_postings
+                ),
+            },
+            "hash_algorithm": "blake2b-64-little",
+        }
+
+        (destination / self.INDEX_METADATA).write_text(
+            json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        return metadata
+
+    @classmethod
+    def load(cls, directory, *, mmap_mode: str | None = "r") -> "CompactBlockingIndex":
+        """Read an index written by :meth:`save`.
+
+        ``mmap_mode='r'`` keeps the postings in the page cache instead of
+        the process heap, so a second run over the same target source costs
+        no rebuild and no resident copy.
+        """
+
+        import json
+        from pathlib import Path
+
+        source = Path(directory)
+        metadata_path = source / cls.INDEX_METADATA
+
+        if not metadata_path.is_file():
+            raise FileNotFoundError(
+                f"{metadata_path} is missing; rebuild the index"
+            )
+
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        if int(metadata.get("format", 0)) != cls.INDEX_FORMAT:
+            raise ValueError(
+                f"index format {metadata.get('format')!r} is not "
+                f"{cls.INDEX_FORMAT}; rebuild the index"
+            )
+
+        self = cls.__new__(cls)
+
+        for key, value in metadata["caps"].items():
+            setattr(self, key, int(value))
+
+        table = EntityIdTable.__new__(EntityIdTable)
+        table._blob = (source / "entity_blob.bin").read_bytes()
+        table.count = int(metadata["entity_count"])
+        table._offsets = np.load(
+            source / "entity_offsets.npy", mmap_mode=mmap_mode
+        )
+        self.entity_ids = table
+
+        self.families = {
+            family: CompactFamily(
+                np.load(
+                    source / f"{family}_hashes.npy", mmap_mode=mmap_mode
+                ),
+                np.load(
+                    source / f"{family}_indptr.npy", mmap_mode=mmap_mode
+                ),
+                np.load(
+                    source / f"{family}_postings.npy", mmap_mode=mmap_mode
+                ),
+                -1,
+            )
+            for family in metadata["families"]
+        }
+
+        return self
+
+    def is_cached(self, directory) -> bool:
+        from pathlib import Path
+
+        return (
+            Path(directory) / self.INDEX_METADATA
+        ).is_file()
 
     # ==============================================================
     # STATS

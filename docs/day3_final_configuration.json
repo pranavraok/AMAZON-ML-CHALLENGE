@@ -1,0 +1,310 @@
+{
+  "report": "day3_final_configuration",
+  "person": "Person 2 - candidate generation",
+  "day": 3,
+  "status": "FROZEN",
+  "generated_by": "scripts/day3_freeze_configuration.py",
+  "reproduce": "python scripts/day3_freeze_configuration.py",
+  "parameter_source_of_truth": "business_entity_resolution.candidate_generation.CandidateGenerationConfig dataclass defaults",
+  "parameters": {
+    "name_top_k": 100,
+    "name_min_score": 0.3,
+    "address_top_k": 100,
+    "address_min_score": 0.15,
+    "rare_token_max_postings": 50,
+    "numeric_token_max_postings": 100,
+    "translit_token_max_postings": 100,
+    "address_token_max_postings": 50,
+    "address_pair_max_postings": 5,
+    "ngram_range": [
+      3,
+      5
+    ]
+  },
+  "retrieval_routes": [
+    {
+      "route": "exact_combined",
+      "kind": "blocking",
+      "implemented_by": "business_entity_resolution.compact_index.CompactBlockingIndex",
+      "blocking_families": [
+        "combined"
+      ],
+      "emitted_route_names": [
+        "exact_combined"
+      ]
+    },
+    {
+      "route": "exact_name",
+      "kind": "blocking",
+      "implemented_by": "business_entity_resolution.compact_index.CompactBlockingIndex",
+      "blocking_families": [
+        "name"
+      ],
+      "emitted_route_names": [
+        "exact_name"
+      ]
+    },
+    {
+      "route": "token_sorted_name",
+      "kind": "blocking",
+      "implemented_by": "business_entity_resolution.compact_index.CompactBlockingIndex",
+      "blocking_families": [
+        "token_name"
+      ],
+      "emitted_route_names": [
+        "token_sorted_name"
+      ]
+    },
+    {
+      "route": "exact_address",
+      "kind": "blocking",
+      "implemented_by": "business_entity_resolution.compact_index.CompactBlockingIndex",
+      "blocking_families": [
+        "address"
+      ],
+      "emitted_route_names": [
+        "exact_address"
+      ]
+    },
+    {
+      "route": "rare_name_tokens",
+      "kind": "blocking",
+      "implemented_by": "business_entity_resolution.compact_index.CompactBlockingIndex",
+      "blocking_families": [
+        "name_token"
+      ],
+      "emitted_route_names": [
+        "rare_name_tokens"
+      ]
+    },
+    {
+      "route": "address_tokens",
+      "kind": "blocking",
+      "implemented_by": "business_entity_resolution.compact_index.CompactBlockingIndex",
+      "blocking_families": [
+        "address_token"
+      ],
+      "emitted_route_names": [
+        "address_tokens"
+      ]
+    },
+    {
+      "route": "address_token_pairs",
+      "kind": "blocking",
+      "implemented_by": "business_entity_resolution.compact_index.CompactBlockingIndex",
+      "blocking_families": [
+        "address_pair"
+      ],
+      "emitted_route_names": [
+        "address_token_pair"
+      ]
+    },
+    {
+      "route": "numeric_address",
+      "kind": "blocking",
+      "implemented_by": "business_entity_resolution.compact_index.CompactBlockingIndex",
+      "blocking_families": [
+        "numeric_address"
+      ],
+      "emitted_route_names": [
+        "numeric_address"
+      ]
+    },
+    {
+      "route": "transliterated_name",
+      "kind": "blocking",
+      "implemented_by": "business_entity_resolution.compact_index.CompactBlockingIndex",
+      "blocking_families": [
+        "translit_name",
+        "translit_token"
+      ],
+      "emitted_route_names": [
+        "exact_name",
+        "transliterated_exact_name",
+        "transliterated_token"
+      ]
+    },
+    {
+      "route": "name_tfidf",
+      "kind": "tfidf",
+      "implemented_by": "business_entity_resolution.retrieval.CharacterTfidfRetriever",
+      "field": "name",
+      "emitted_route_names": [
+        "name_tfidf"
+      ]
+    },
+    {
+      "route": "address_tfidf",
+      "kind": "tfidf",
+      "implemented_by": "business_entity_resolution.retrieval.CharacterTfidfRetriever",
+      "field": "address",
+      "emitted_route_names": [
+        "address_tfidf"
+      ]
+    }
+  ],
+  "retrieval_route_count": 11,
+  "posting_caps": {
+    "rare_name_token_max_postings": 50,
+    "transliterated_token_max_postings": 100,
+    "numeric_address_token_max_postings": 100,
+    "address_token_max_postings": 50,
+    "address_token_pair_max_postings": 5,
+    "semantics": {
+      "rare_name_tokens": "token posting length > cap -> bucket rejected entirely (count includes per-occurrence duplicates)",
+      "transliterated_token": "token posting length > cap -> bucket rejected",
+      "numeric_address": "numeric token posting length > cap -> bucket rejected; leading zeros stripped before keying",
+      "address_tokens": "token posting length > cap -> bucket rejected; a candidate then needs >= 2 shared address tokens",
+      "address_token_pair": "cap applies to the COMBINED two-token bucket, not to each token separately"
+    }
+  },
+  "country_handling": {
+    "policy": "open set; no hard-coded country list",
+    "blocking_partition_key": "blocking._country(record): str(country).strip().lower()",
+    "tfidf_partition_key": "retrieval.CharacterTfidfRetriever groups by NormalizedRecord.country == str(country).strip() (case preserved)",
+    "chunked_partition_key": "chunked_generation.partition_targets_by_country writes one file per str(country).strip() or '__unknown__'; chunked_generation._country_of(source1) resolves the S1 side to the same key",
+    "partition_map_file": "partition_map.json",
+    "partition_filename_transform": "chunked_generation._safe: keep [A-Za-z0-9-_], replace everything else with '_', truncate to 64 chars",
+    "cross_country_candidates_possible": false,
+    "blank_country_sentinel": "__unknown__",
+    "test_countries_observed": [
+      "France",
+      "India",
+      "US"
+    ]
+  },
+  "missing_evidence_policy": {
+    "address_missing": "a blank normalized address is MISSING evidence, never an exact match: exact_address, exact_combined, address_tokens, address_token_pairs, numeric_address and address_tfidf all require a non-empty address",
+    "name_missing": "a blank normalized name disables exact_name, token_sorted_name, rare_name_tokens and the transliteration routes"
+  },
+  "chunking": {
+    "default_chunk_size": 50000,
+    "unit": "Source 1 records per chunk file",
+    "chunk_boundary_rule": "row position in the source file, not content, so a resumed run recomputes identical chunks",
+    "s1_reader_chunksize": 50000,
+    "target_partition_reader_chunksize": 50000,
+    "chunk_header": "source1_entity_id\tcandidate_entity_ids",
+    "final_header": "source1_entity_id\tcandidate_entity_ids",
+    "atomic_write": "chunk written to <name>.tsv.tmp then os.replace; manifest written to manifest.json.tmp then os.replace"
+  },
+  "compact_index": {
+    "class": "business_entity_resolution.compact_index.CompactBlockingIndex",
+    "used_by": [
+      "CandidateGenerator(blocking_backend='compact')",
+      "chunked_generation.ChunkedTargetIndex(CompactBlockingIndex.from_stream)"
+    ],
+    "layout": "CSR postings of int32 row ids, sorted uint64 keys",
+    "families": [
+      "name",
+      "token_name",
+      "address",
+      "combined",
+      "name_token",
+      "address_token",
+      "address_pair",
+      "numeric_address",
+      "translit_name",
+      "translit_token"
+    ],
+    "key_hash": {
+      "function": "business_entity_resolution.compact_index.key_hash",
+      "algorithm": "blake2b",
+      "digest_size_bytes": 8,
+      "byte_order": "little",
+      "signed": false,
+      "component_separator": "NUL byte (0x00)",
+      "separator_is_injective_because": "normalization.normalize_unicode maps every non-alphanumeric, non-combining character to a space, so NUL cannot occur inside a normalized field",
+      "why_not_builtin_hash": "string hashing is salted per process, so a persisted index would be unreadable in another process"
+    },
+    "verify_no_hash_collisions": true,
+    "posting_multiset_semantics": "postings are multisets, not sets: one append per token occurrence, so repeated tokens change cap behaviour and are preserved deliberately",
+    "shared_tokenizers": [
+      "blocking._tokens",
+      "blocking._numeric_tokens",
+      "blocking._transliterate",
+      "blocking._address_pair_keys",
+      "blocking._country"
+    ]
+  },
+  "deduplication_rules": {
+    "scope": "one S1 record's candidate list",
+    "within_source": "evidence is keyed by candidate_entity_id in a dict, so a candidate found by several routes appears once with its routes merged",
+    "across_sources": "S2 and S3 are generated independently; finalize() unions them and keeps first-seen order",
+    "self_match_excluded": true,
+    "self_match_mechanism": "blocking._add_ids / compact_index._add_rows skip a candidate whose entity_id equals the S1 id; retrieval.retrieve skips the same",
+    "order": "sort key (-route_count, -retrieval_score, retrieval_rank, candidate_entity_id); the final entity_id tie-break makes the order total and independent of stream order",
+    "finalize_dedup": "chunked_generation.finalize keeps first-seen order and rejects an entity_id appearing in two chunks of the same target source"
+  },
+  "transliteration": {
+    "library": "Unidecode==1.4.0",
+    "role": "additional route layered on top of the Unicode view",
+    "never_replaces": "the Unicode-preserving name index",
+    "degradation": "if Unidecode is unavailable the routes become duplicates of the Unicode routes instead of failing"
+  },
+  "entry_points": {
+    "full_test_chunked": "python -m business_entity_resolution.run_chunked_generation --s1 <test_source1.tsv> --target-s2 <test_source2.tsv> --target-s3 <test_source3.tsv> --work-dir <dir> --output <candidate_pairs.tsv>",
+    "development_evaluation": "python -m business_entity_resolution.dev_candidate_generation --limit <n> --blocking-backend compact",
+    "final_output_validation": "python -m business_entity_resolution.validate_candidates --candidates <file> --s1 <...> --s2 <...> --s3 <...>"
+  },
+  "project_settings": {
+    "repository_root": "C:\\Users\\AMOGA\\OneDrive\\Desktop\\AMAZON-ML-CHALLENGE\\AMAZON-ML-CHALLENGE",
+    "project": {
+      "seed": 2026,
+      "log_level": "INFO"
+    },
+    "paths": {
+      "dataset_root": "C:\\Users\\AMOGA\\OneDrive\\Desktop\\AMAZON-ML-CHALLENGE\\6ab10eb3b23ba_student_resource\\student_resource\\dataset",
+      "development_dir": "C:\\Users\\AMOGA\\OneDrive\\Desktop\\AMAZON-ML-CHALLENGE\\AMAZON-ML-CHALLENGE\\data\\dev",
+      "work_dir": "C:\\Users\\AMOGA\\OneDrive\\Desktop\\AMAZON-ML-CHALLENGE\\AMAZON-ML-CHALLENGE\\data\\work",
+      "artifact_dir": "C:\\Users\\AMOGA\\OneDrive\\Desktop\\AMAZON-ML-CHALLENGE\\AMAZON-ML-CHALLENGE\\artifacts",
+      "output_dir": "C:\\Users\\AMOGA\\OneDrive\\Desktop\\AMAZON-ML-CHALLENGE\\AMAZON-ML-CHALLENGE\\output"
+    },
+    "development_subset": {
+      "source1_count": 50000,
+      "negative_multiplier_per_source": 2.0
+    }
+  },
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "imported_from": "C:\\Users\\AMOGA\\OneDrive\\Desktop\\AMAZON-ML-CHALLENGE\\AMAZON-ML-CHALLENGE\\src"
+  },
+  "frozen_source_files": [
+    {
+      "path": "src/business_entity_resolution/blocking.py",
+      "bytes": 21697,
+      "sha256": "5ca06bf2c68ba1221bb843c88e4df1034350960fc5c62b13fda30ec70aa07cde"
+    },
+    {
+      "path": "src/business_entity_resolution/candidate_generation.py",
+      "bytes": 9660,
+      "sha256": "73bb29c64016fd846cc1b2448066f7cd5970fef60b969957da78c6732074c80c"
+    },
+    {
+      "path": "src/business_entity_resolution/chunked_generation.py",
+      "bytes": 26415,
+      "sha256": "13e23e3bc9469759e892ea9b7ec41c43f871a40069c6ca034364d50b778724e4"
+    },
+    {
+      "path": "src/business_entity_resolution/compact_index.py",
+      "bytes": 25661,
+      "sha256": "019bb099518e3240fae49bfc2dadaa966c557b3f798d979edf9b0ab340ac9f06"
+    },
+    {
+      "path": "src/business_entity_resolution/normalization.py",
+      "bytes": 3651,
+      "sha256": "354b265d13b3e19753732a922a7632bafdcea92b39d911f87db49cca654a3b14"
+    },
+    {
+      "path": "src/business_entity_resolution/retrieval.py",
+      "bytes": 11414,
+      "sha256": "99d3ddcb8bf19b9a8bcd2bfb23f847a36252693149db0169a5d85eada4b4e9c7"
+    },
+    {
+      "path": "src/business_entity_resolution/run_chunked_generation.py",
+      "bytes": 5242,
+      "sha256": "0f0d9ca76d76058ebcba6b1716639975b810f55ed25c25610ee4e4f5ac8ad4d8"
+    }
+  ],
+  "fingerprint": "ef15d22dd2530e8837ee2f0fe3b3649d6dcecfc6c4625fb2e0bcceb10b4650e3"
+}
